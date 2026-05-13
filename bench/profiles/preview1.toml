@@ -1,0 +1,25 @@
+profile = "preview1"
+description = "Pinned WASI Preview 1 workloads with output hashing and explicit runtime eligibility."
+default_runs = 5
+warmup_runs = 1
+prepare = ["zig build", "zig build opcodes-wasm"]
+
+[[benchmark]]
+id = "opcodes-cli"
+wasm = "zig-out/bin/opcodes_cli.wasm"
+expected_exit_code = 0
+expected_stdout_sha256 = "b4d6e9e4545de00eeb00e8a10bbb9cc2c3db089d7b31dfbe4d1c8cafec2cc5d0"
+expected_stderr_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+feature_tags = ["wasi-preview1", "cli"]
+required_runtimes = ["wart", "wasmtime", "wasmer", "wasmedge", "wazero", "wasm3"]
+min_runs = 5
+
+[[benchmark]]
+id = "omni-opcode-wasi"
+wasm = "bench/wasm/omni_opcode_wasi_bench.wasm"
+expected_exit_code = 0
+expected_stdout_sha256 = "5e2b47b1395eceecb7b53134d409a9e57b23d630f4745c010e3770d25bfed4fb"
+expected_stderr_sha256 = "f39a13516e9046fa908194dddf2479d0e342f24b273901468779970cd3a5fb8e"
+feature_tags = ["wasi-preview1", "opcode-coverage"]
+required_runtimes = ["wart", "wasmtime"]
+min_runs = 5

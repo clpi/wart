@@ -1,0 +1,5 @@
+profile = "wasix"
+description = "Reserved for pinned WASIX black-box workloads once guest fixtures and host expectations are finalized."
+default_runs = 5
+warmup_runs = 1
+prepare = ["zig build"]

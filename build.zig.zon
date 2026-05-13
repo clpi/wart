@@ -1,0 +1,7 @@
+.{
+    .name = .wart,
+    .dependencies = .{},
+    .version = "0.1.0-alpha",
+    .paths = .{"src"},
+    .fingerprint = 0xd4d8487f2f14075f,
+}

@@ -1,0 +1,33 @@
+services:
+  wart-runtime:
+    build:
+      context: .
+      target: runtime
+    image: wart-runtime:latest
+    volumes:
+      - ./examples:/workspace/examples:ro
+      - ./bench:/workspace/bench:ro
+    working_dir: /workspace
+    command: ["--help"]
+
+  wart-dev:
+    build:
+      context: .
+      target: dev
+    image: wart-dev:latest
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: ["nix", "develop"]
+
+  wart-bench:
+    extends: wart-runtime
+    volumes:
+      - .:/workspace
+    command: ["nix", "develop", "--command", "bash", "bench/run.sh"]
+
+networks:
+  default:
+    name: wart-network

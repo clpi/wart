@@ -1,0 +1,33 @@
+# CODEOWNERS file for wx WebAssembly Runtime
+# This file defines who owns different parts of the codebase
+# For more information, see: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+* @clpi
+
+# Core source code
+/src/ @clpi
+/src/wasm/ @clpi
+/src/cmd/ @clpi
+
+# Build configuration
+/build.zig @clpi
+/Makefile @clpi
+/.build.zig.zon @clpi
+
+# Benchmarking
+/bench/ @clpi
+/bench_extended.py @clpi
+
+# Examples and documentation
+/examples/ @clpi
+/README.md @clpi
+/LICENSE @clpi
+
+# CI/CD workflows
+/.github/workflows/ @clpi
+
+# Development configuration
+/flake.nix @clpi
+/Brewfile @clpi
+/.vscode/ @clpi

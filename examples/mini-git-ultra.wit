@@ -1,0 +1,201 @@
+// WIT (WebAssembly Interface Types) definition for mini-git-ultra
+// Component Model interface for type-safe VCS operations
+//
+// This demonstrates WASI Preview 2/3 Component Model features
+
+package mini-git:ultra@0.3.0;
+
+/// Version control system interface with advanced WASM features
+interface vcs {
+    /// Repository initialization result
+    record init-result {
+        /// Path to the created repository
+        path: string,
+        /// Features enabled (SIMD, threads, etc.)
+        features: list<string>,
+        /// Number of worker threads (if threads enabled)
+        worker-threads: option<u32>,
+    }
+
+    /// File status in the repository
+    record file-status {
+        /// File path relative to repository root
+        path: string,
+        /// File size in bytes
+        size: u64,
+        /// SHA-256 hash (32 bytes)
+        hash: list<u8>,
+        /// Whether file is staged for commit
+        staged: bool,
+        /// Last modification timestamp
+        modified: u64,
+    }
+
+    /// Repository statistics
+    record repo-stats {
+        /// Total number of commits
+        commit-count: u32,
+        /// Total number of tracked files
+        file-count: u32,
+        /// Total repository size in bytes
+        total-bytes: u64,
+        /// Whether SIMD acceleration is active
+        simd-enabled: bool,
+        /// Whether thread pool is active
+        threads-enabled: bool,
+        /// Number of worker threads
+        worker-count: u32,
+    }
+
+    /// Hashing performance metrics
+    record hash-metrics {
+        /// Number of files hashed
+        file-count: u32,
+        /// Total bytes hashed
+        bytes-hashed: u64,
+        /// Time elapsed in microseconds
+        elapsed-micros: u64,
+        /// Whether parallel hashing was used
+        parallel: bool,
+        /// Speedup factor (if parallel)
+        speedup: option<float32>,
+    }
+
+    /// Error types specific to VCS operations
+    variant vcs-error {
+        /// Not a valid repository
+        not-a-repository,
+        /// File not found
+        file-not-found(string),
+        /// Repository already exists
+        already-exists,
+        /// Invalid file path
+        invalid-path(string),
+        /// Hash verification failed
+        hash-mismatch(string),
+        /// Thread pool error
+        thread-error(string),
+        /// I/O error
+        io-error(string),
+    }
+
+    /// Initialize a new repository with all available WASM features
+    ///
+    /// This function:
+    /// - Creates repository structure (.minigit/)
+    /// - Detects and enables available WASM features (SIMD, threads, etc.)
+    /// - Initializes thread pool if threads are available
+    /// - Returns information about enabled features
+    init: func() -> result<init-result, vcs-error>;
+
+    /// Add a file to the staging area with parallel hashing
+    ///
+    /// Uses thread pool for hashing if available, otherwise falls back
+    /// to sequential hashing. SIMD acceleration is used when available.
+    ///
+    /// Returns hash metrics including whether parallel hashing was used
+    add: func(path: string) -> result<hash-metrics, vcs-error>;
+
+    /// Get status of a specific file
+    get-file-status: func(path: string) -> result<file-status, vcs-error>;
+
+    /// List all staged files
+    list-staged: func() -> result<list<file-status>, vcs-error>;
+
+    /// Get repository statistics
+    get-stats: func() -> result<repo-stats, vcs-error>;
+
+    /// Verify repository integrity (parallel verification if threads available)
+    verify: func() -> result<u32, vcs-error>;
+
+    /// Run parallel hashing benchmark (requires threads)
+    ///
+    /// Creates test files and compares sequential vs parallel hashing
+    /// performance. Returns speedup factor.
+    benchmark-parallel: func(file-count: u32) -> result<hash-metrics, vcs-error>;
+}
+
+/// WASI Preview 2/3 integration
+interface wasi-integration {
+    /// Clock interface for high-resolution timing
+    use wasi:clocks/monotonic-clock@0.2.0.{instant, duration};
+
+    /// Filesystem interface
+    use wasi:filesystem/types@0.2.0.{descriptor, error-code};
+
+    /// CLI interface
+    use wasi:cli/environment@0.2.0.{get-arguments, get-environment};
+
+    /// Thread spawn capability (WASI Preview 3)
+    resource thread-handle {
+        /// Wait for thread completion
+        join: func() -> result<_, string>;
+    }
+
+    /// Spawn a new thread (requires wasi-threads)
+    spawn-thread: func(closure: string) -> result<thread-handle, string>;
+
+    /// Get number of available hardware threads
+    get-num-threads: func() -> u32;
+}
+
+/// Main component world
+world mini-git-ultra {
+    /// VCS operations
+    export vcs;
+
+    /// WASI Preview 2/3 imports
+    import wasi:cli/environment@0.2.0;
+    import wasi:cli/exit@0.2.0;
+    import wasi:cli/stdin@0.2.0;
+    import wasi:cli/stdout@0.2.0;
+    import wasi:cli/stderr@0.2.0;
+    import wasi:filesystem/types@0.2.0;
+    import wasi:filesystem/preopens@0.2.0;
+    import wasi:clocks/monotonic-clock@0.2.0;
+    import wasi:clocks/wall-clock@0.2.0;
+    import wasi:random/random@0.2.0;
+
+    /// Thread support (WASI Preview 3 / experimental)
+    /// Note: Not yet standardized, uses wasi-threads proposal
+    import wasi:io/poll@0.2.0;
+}
+
+/// Resource management for advanced features
+interface resources {
+    /// Thread pool resource
+    resource thread-pool {
+        /// Create a thread pool with specified number of workers
+        constructor(num-workers: u32);
+
+        /// Submit a task to the thread pool
+        submit: func(task-id: string);
+
+        /// Wait for all tasks to complete
+        wait: func();
+
+        /// Shutdown the thread pool
+        shutdown: func();
+
+        /// Get number of active workers
+        get-worker-count: func() -> u32;
+    }
+
+    /// SHA-256 hasher resource (can be SIMD-accelerated)
+    resource hasher {
+        /// Create a new hasher instance
+        constructor();
+
+        /// Update hash with data
+        update: func(data: list<u8>);
+
+        /// Finalize and get hash
+        finalize: func() -> list<u8>;
+
+        /// Hash data in one call (optimized)
+        hash-bytes: static func(data: list<u8>) -> list<u8>;
+
+        /// Hash file (uses SIMD if available)
+        hash-file: static func(path: string) -> result<list<u8>, string>;
+    }
+}

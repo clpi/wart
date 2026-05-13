@@ -1,0 +1,17 @@
+[book]
+authors = ["Chris Pecunies"]
+language = "en"
+src = "src"
+title = "wart - WebAssembly Runtime"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "ayu"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/clpi/wart"
+edit-url-template = "https://github.com/clpi/wart/edit/main/docs/src/{path}"
+
+[output.html.search]
+enable = true

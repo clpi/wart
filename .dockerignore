@@ -1,0 +1,31 @@
+# Docker ignore patterns for wx
+.git/
+.github/
+.zig-cache/
+zig-out/
+.direnv/
+.claude/
+
+# Documentation
+*.md
+docs/
+
+# Development files
+.envrc
+.gitignore
+.gitattributes
+.editorconfig
+shell.nix
+flake.lock
+
+# Test artifacts
+test/
+tests/
+bench/bleeding_edge/
+bench/comprehensive/
+
+# Large example files
+examples/*.wasm
+examples/kitchensink*
+examples/read_write*
+examples/sqlite3*

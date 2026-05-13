@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+jobs:
+  validate-workflows:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate workflow files
+        run: |
+          python3 -c "import yaml; import sys; import glob
+          failed = False
+          for f in glob.glob('.github/workflows/*.yml'):
+              try:
+                  yaml.safe_load(open(f))
+                  print(f'✓ {f}')
+              except Exception as e:
+                  print(f'✗ {f}: {e}')
+                  failed = True
+          sys.exit(1 if failed else 0)"
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ secrets.ZIG_VERSION || 'master' }}
+
+      - name: Run zig fmt
+        if: matrix.os == 'ubuntu-22.04'
+        run: zig fmt --check .
+
+      - name: Run zig build (Debug)
+        run: zig build
+
+      - name: Run zig build (Release)
+        run: zig build -Drelease=true -Duse-llvm=true
+
+      - name: Run tests
+        run: zig build test
+
+      - name: Emit capability report
+        if: matrix.os == 'ubuntu-22.04'
+        run: ./zig-out/bin/wax inspect capabilities --format json > capability-report.json
+
+      - name: Build WASM opcodes CLI
+        if: matrix.os == 'ubuntu-22.04'
+        run: zig build opcodes-wasm -Drelease=true || true
+
+      - name: Build WASI2 benchmark
+        if: matrix.os == 'ubuntu-22.04'
+        run: zig build wasi2-benchmark -Drelease=true || true
+
+      - name: Test WASM examples (Ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          # Install WABT for compiling WAT files
+          sudo apt-get update -qq
+          sudo apt-get install -y wabt
+
+          # Build wax
+          zig build -Drelease=true -Duse-llvm=true
+
+          # Test with a simple example
+          cd examples
+          echo "(module (func (export \"_start\")))" > test.wat
+          wat2wasm test.wat -o test.wasm
+          ../zig-out/bin/wax test.wasm
+          echo "WASM example tested successfully"
+
+          # Test with comprehensive opcode benchmark
+          cd ../bench/wasm
+          if [ -f "simple.wat" ]; then
+            wat2wasm simple.wat -o simple.wasm 2>/dev/null || true
+            if [ -f "simple.wasm" ]; then
+              ../../zig-out/bin/wax simple.wasm || echo "Simple benchmark test completed"
+            fi
+          fi
+
+      - name: Upload capability report
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: capability-report
+          path: capability-report.json
+          if-no-files-found: warn
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wax-${{ matrix.os }}
+          path: ./zig-out/bin/
+          if-no-files-found: error

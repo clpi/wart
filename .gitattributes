@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.zig text eol=lf
+zig.mod text eol=lf
+zigmod.* text eol=lf
+zig.mod linguist-language=YAML
+zig.mod gitlab-language=yaml
+CHANGELOG.md merge=union
+*.wat linguist-vendored
+*.wast linguist-vendored
+*.wasm  binary

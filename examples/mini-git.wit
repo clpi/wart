@@ -1,0 +1,110 @@
+// WebAssembly Component Model Interface for Mini-Git
+// Uses WASI Preview 2 and bleeding-edge WASM features
+
+package mini-git:vcs@0.2.0;
+
+/// Git-like version control system interface
+interface vcs {
+    /// Repository initialization result
+    variant init-result {
+        success,
+        already-exists,
+        permission-denied,
+    }
+
+    /// File status in the repository
+    record file-status {
+        path: string,
+        size: u64,
+        modified-time: u64,
+        hash: list<u8>,
+        staged: bool,
+    }
+
+    /// Commit information
+    record commit {
+        id: string,
+        message: string,
+        timestamp: u64,
+        author: string,
+        files: list<string>,
+        parent: option<string>,
+    }
+
+    /// Diff entry showing file changes
+    record diff-entry {
+        path: string,
+        old-hash: option<list<u8>>,
+        new-hash: option<list<u8>>,
+        change-type: change-type,
+    }
+
+    /// Type of change in a diff
+    enum change-type {
+        added,
+        modified,
+        deleted,
+    }
+
+    /// Error types
+    variant vcs-error {
+        not-a-repository,
+        file-not-found(string),
+        invalid-commit(string),
+        io-error(string),
+        hash-collision,
+        permission-denied,
+    }
+
+    /// Initialize a new repository
+    init: func() -> result<init-result, vcs-error>;
+
+    /// Add a file to the staging area (with SIMD-accelerated hashing)
+    add: func(path: string) -> result<_, vcs-error>;
+
+    /// Remove a file from the staging area
+    remove: func(path: string) -> result<_, vcs-error>;
+
+    /// Commit staged changes
+    commit: func(message: string, author: string) -> result<string, vcs-error>;
+
+    /// Get repository status (parallel stat operations)
+    status: func() -> result<list<file-status>, vcs-error>;
+
+    /// Get commit history
+    log: func(limit: option<u32>) -> result<list<commit>, vcs-error>;
+
+    /// Get diff between commits (multi-threaded)
+    diff: func(commit1: option<string>, commit2: option<string>) -> result<list<diff-entry>, vcs-error>;
+
+    /// Create a new branch
+    branch: func(name: string) -> result<_, vcs-error>;
+
+    /// Checkout a branch or commit
+    checkout: func(target: string) -> result<_, vcs-error>;
+
+    /// Merge a branch into current branch
+    merge: func(branch: string) -> result<_, vcs-error>;
+
+    /// Compute SHA-256 hash of file (SIMD-accelerated)
+    hash-file: func(path: string) -> result<list<u8>, vcs-error>;
+
+    /// Verify repository integrity
+    verify: func() -> result<bool, vcs-error>;
+}
+
+world mini-git {
+    import wasi:io/streams@0.2.0;
+    import wasi:filesystem/types@0.2.0;
+    import wasi:filesystem/preopens@0.2.0;
+    import wasi:clocks/wall-clock@0.2.0;
+    import wasi:clocks/monotonic-clock@0.2.0;
+    import wasi:random/random@0.2.0;
+    import wasi:cli/environment@0.2.0;
+    import wasi:cli/exit@0.2.0;
+    import wasi:cli/stdin@0.2.0;
+    import wasi:cli/stdout@0.2.0;
+    import wasi:cli/stderr@0.2.0;
+
+    export vcs;
+}

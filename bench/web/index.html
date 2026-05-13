@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wart Web Bench</title>
+    <style>
+      :root {
+        --bg: #f5f1e8;
+        --ink: #1e1b16;
+        --muted: #6a5d4b;
+        --accent: #c96b3c;
+        --card: #fffaf0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+        background: radial-gradient(800px 400px at 20% 0%, #fff3dd, var(--bg));
+        color: var(--ink);
+      }
+      header {
+        padding: 32px 24px 12px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        letter-spacing: 0.02em;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+      main {
+        padding: 16px 24px 32px;
+        max-width: 900px;
+      }
+      .panel {
+        background: var(--card);
+        border: 1px solid #eadbc6;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 6px 20px rgba(38, 25, 11, 0.08);
+      }
+      .controls {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      input {
+        width: 72px;
+        padding: 6px 8px;
+        border: 1px solid #d8c9b5;
+        border-radius: 6px;
+        font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+      }
+      button {
+        padding: 8px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+      }
+      th, td {
+        padding: 10px 8px;
+        border-bottom: 1px solid #e6d8c6;
+        text-align: left;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .status {
+        margin-top: 10px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>wart Web Bench</h1>
+      <p>Browser-side WebAssembly timing (Firefox Developer Edition)</p>
+    </header>
+    <main>
+      <div class="panel">
+        <div class="controls">
+          <label>Warmup <input id="warmup" type="number" min="0" value="2" /></label>
+          <label>Runs <input id="runs" type="number" min="1" value="5" /></label>
+          <button id="run">Run</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Benchmark</th>
+              <th>Avg Time</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="results"></tbody>
+        </table>
+        <div class="status" id="status">Idle</div>
+      </div>
+    </main>
+    <script src="bench.js"></script>
+  </body>
+</html>

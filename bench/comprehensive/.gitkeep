@@ -1,0 +1,35 @@
+# Comprehensive Benchmark Suite
+
+This directory contains the comprehensive benchmark suite for testing wx against all major WebAssembly runtimes.
+
+## Files
+
+- `comprehensive_suite.py` - Main benchmark script (run from `bench/` directory)
+- `wasm/` - Directory for WASM benchmark files
+- `README.md` - Full documentation
+- `benchmark_results.json` - Auto-generated results (created after running)
+
+## Running
+
+From the project root:
+
+```bash
+cd bench
+python3 comprehensive_suite.py
+```
+
+Or use the quickstart shell script:
+
+```bash
+bash bench/run_comprehensive.sh
+```
+
+## Coverage
+
+This suite tests:
+- **WebAssembly 3.0**: GC, Exceptions, Tail Calls, Function References
+- **WASI Preview 1**: All 50+ syscalls (fd_*, clock_*, random_*, environ_*, args_*, path_*)
+- **WASI Preview 2**: Streams, Poll, Component Model
+- **Wasix**: Sockets, IPC, Process Management, Advanced I/O
+
+See `README.md` for full documentation.

@@ -1,0 +1,60 @@
+name: WebAssembly Spec Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+jobs:
+  spec-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ secrets.ZIG_VERSION || 'master' }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git jq python3 wabt
+
+      - name: Build wax runtime
+        run: zig build -j$(nproc)
+
+      - name: Fetch pinned upstream suites
+        run: |
+          chmod +x scripts/fetch-spec-suites.sh scripts/run-spec-tests.sh
+          ./scripts/fetch-spec-suites.sh
+
+      - name: Run pinned verification
+        run: |
+          set +e
+          ./zig-out/bin/wax verify spec --profile all --format markdown --output artifacts/spec
+          echo "VERIFY_EXIT=$?" >> "$GITHUB_ENV"
+          set -e
+
+      - name: Upload verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spec-verification
+          path: artifacts/spec/
+          if-no-files-found: warn
+
+      - name: Fail on verification errors
+        if: env.VERIFY_EXIT != '0'
+        run: exit 1

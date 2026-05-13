@@ -1,0 +1,101 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ secrets.ZIG_VERSION || 'master' }}
+
+      - name: Install Benchmark Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y wabt hyperfine wasm3
+          wat2wasm --version
+          hyperfine --version
+
+      - name: Install Wasmer
+        run: |
+          curl https://get.wasmer.io -sSfL | sh
+          echo "$HOME/.wasmer/bin" >> $GITHUB_PATH
+
+      - name: Install Wasmtime
+        run: |
+          curl https://wasmtime.dev/install.sh -sSfL | bash
+          echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
+
+      - name: Install WasmEdge
+        run: |
+          curl -sSf https://raw.githubusercontent.com/WasmEdge/WasmEdge/master/utils/install.sh | bash -s -- -v 0.13.5
+          echo "$HOME/.wasmedge/bin" >> $GITHUB_PATH
+
+      - name: Install WAMR (iwasm and wamrc)
+        run: |
+          sudo apt-get install -y cmake llvm-dev clang lld
+          git clone --depth 1 https://github.com/bytecodealliance/wasm-micro-runtime.git /tmp/wamr
+          cd /tmp/wamr
+          mkdir build && cd build
+          cmake .. -DWAMR_BUILD_AOT=1 -DWAMR_BUILD_FAST_INTERP=1
+          make -j$(nproc)
+          sudo cp iwasm /usr/local/bin/
+          cd ../wamr-compiler
+          mkdir build && cd build
+          cmake ..
+          make -j$(nproc)
+          sudo cp wamrc /usr/local/bin/
+
+      - name: Build wax
+        run: |
+          zig build -Drelease=true -Duse-llvm=true -j$(nproc)
+          ./zig-out/bin/wax --help
+
+      - name: Build benchmark artifacts
+        run: |
+          zig build opcodes-wasm -Drelease=true || true
+          zig build wasi2-benchmark -Drelease=true || true
+
+      - name: Run core-universal benchmark profile
+        run: |
+          export PATH="$HOME/.wasmer/bin:$HOME/.wasmtime/bin:$HOME/.wasmedge/bin:$PATH"
+          bash scripts/run-benchmarks.sh --profile core-universal --format markdown --output bench/results || true
+
+      - name: Run preview1 benchmark profile
+        run: |
+          export PATH="$HOME/.wasmer/bin:$HOME/.wasmtime/bin:$HOME/.wasmedge/bin:$PATH"
+          bash scripts/run-benchmarks.sh --profile preview1 --format markdown --output bench/results || true
+
+      - name: Run b.sh comprehensive benchmark
+        run: |
+          export PATH="$HOME/.wasmer/bin:$HOME/.wasmtime/bin:$HOME/.wasmedge/bin:$PATH"
+          chmod +x ./b.sh
+          ./b.sh --color=always || true
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            bench/results/*.json
+            bench/results/*.md
+            bench/results/*.toml
+          if-no-files-found: warn

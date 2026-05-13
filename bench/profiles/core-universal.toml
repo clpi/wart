@@ -1,0 +1,23 @@
+profile = "core-universal"
+description = "Pinned cross-runtime gate for workloads expected to run across the mandatory runtime set."
+default_runs = 7
+warmup_runs = 2
+prepare = ["zig build -Drelease=true -Duse-llvm=true"]
+
+# Note: Add benchmark workloads that work across all runtimes here
+# The b.sh script provides comprehensive coverage including:
+# - Opcode dispatch benchmarks
+# - WASI Preview 1 scenarios
+# - WASI Preview 2 / WIT component model
+# - Real-world workloads like mini-git
+
+[[benchmark]]
+id = "mini-git"
+wasm = "examples/mini-git.wasm"
+expected_exit_code = 0
+expected_stdout_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+expected_stderr_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+feature_tags = ["wasi-preview1", "real-world"]
+required_runtimes = ["wart", "wasmtime"]
+args = ["--help"]
+min_runs = 5

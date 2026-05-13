@@ -1,0 +1,168 @@
+{
+  "lock_date": "2026-03-04",
+  "generated_from": "Official WebAssembly GitHub organization repositories current on 2026-03-04.",
+  "suites": [
+    {
+      "id": "core-spec",
+      "feature": "core",
+      "profiles": ["all", "core"],
+      "repo": "https://github.com/WebAssembly/spec.git",
+      "commit": "c07e5c9a80fb2ee593648c5957ccd2f0ad6f40fc",
+      "checkout": "third_party/spec",
+      "note": "Core WebAssembly spec and shared proposal test coverage."
+    },
+    {
+      "id": "official-testsuite",
+      "feature": "core",
+      "profiles": ["all", "core"],
+      "repo": "https://github.com/WebAssembly/testsuite.git",
+      "commit": "c337f0da6477acd40fbcab98671a68f59106ad86",
+      "checkout": "third_party/testsuite",
+      "note": "Official shared testsuite repository."
+    },
+    {
+      "id": "component-model",
+      "feature": "component-model",
+      "profiles": ["all", "components", "preview2"],
+      "repo": "https://github.com/WebAssembly/component-model.git",
+      "commit": "c7176a512c0bbe4654849f4ba221c1a71c7cf514",
+      "checkout": "third_party/component-model",
+      "note": "Component model design and tests."
+    },
+    {
+      "id": "wasi",
+      "feature": "wasi",
+      "profiles": ["all", "preview1", "preview2"],
+      "repo": "https://github.com/WebAssembly/WASI.git",
+      "commit": "bef90913bc46ac24769ab0fb7986cd0247b08c92",
+      "checkout": "third_party/WASI",
+      "note": "WASI proposals and WIT definitions."
+    },
+    {
+      "id": "wasi-testsuite",
+      "feature": "wasi",
+      "profiles": ["all", "preview1", "preview2"],
+      "repo": "https://github.com/WebAssembly/wasi-testsuite.git",
+      "commit": "381af5a7905564ee61eeb2c40ae15bb1b2eb84df",
+      "checkout": "third_party/wasi-testsuite",
+      "note": "Pinned upstream WASI testsuite."
+    },
+    {
+      "id": "threads",
+      "feature": "threads",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/threads.git",
+      "commit": "f521d7b3c19bcc9097aad979b3b91837eab88d83",
+      "checkout": "third_party/threads",
+      "note": "Threads proposal and tests."
+    },
+    {
+      "id": "function-references",
+      "feature": "function-references",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/function-references.git",
+      "commit": "74d2ec81d15efd3c0f2fba46a023f376101d8e46",
+      "checkout": "third_party/function-references",
+      "note": "Function references proposal."
+    },
+    {
+      "id": "memory64",
+      "feature": "memory64",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/memory64.git",
+      "commit": "9003cd5e24e53b84cd9027ea3dd7ae57159a6db1",
+      "checkout": "third_party/memory64",
+      "note": "Memory64 proposal."
+    },
+    {
+      "id": "tail-call",
+      "feature": "tail-call",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/tail-call.git",
+      "commit": "a6003d06aefef41e20a3e36fe2e500062555c895",
+      "checkout": "third_party/tail-call",
+      "note": "Tail-call proposal."
+    },
+    {
+      "id": "gc",
+      "feature": "gc",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/gc.git",
+      "commit": "756060f5816c7e2159f4817fbdee76cf52f9c923",
+      "checkout": "third_party/gc",
+      "note": "Garbage collection proposal."
+    },
+    {
+      "id": "exception-handling",
+      "feature": "exception-handling",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/exception-handling.git",
+      "commit": "af287a73d8f3bf7ea216c10592f9e350b947c4f2",
+      "checkout": "third_party/exception-handling",
+      "note": "Exception handling proposal."
+    },
+    {
+      "id": "reference-types",
+      "feature": "reference-types",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/reference-types.git",
+      "commit": "c7a3558bb5cbacb9c8879a91e08d0ac7276b740c",
+      "checkout": "third_party/reference-types",
+      "note": "Reference types proposal."
+    },
+    {
+      "id": "simd",
+      "feature": "simd",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/simd.git",
+      "commit": "a78b98a6899c9e91a13095e560767af6e99d98fd",
+      "checkout": "third_party/simd",
+      "note": "SIMD proposal."
+    },
+    {
+      "id": "relaxed-simd",
+      "feature": "relaxed-simd",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/relaxed-simd.git",
+      "commit": "c3f9359af2cd607cc46b0a3274f90ea52543a2f2",
+      "checkout": "third_party/relaxed-simd",
+      "note": "Relaxed SIMD proposal."
+    },
+    {
+      "id": "multi-memory",
+      "feature": "multi-memory",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/multi-memory.git",
+      "commit": "cf8b5aa27257311b8eac80ae83f4ba22ee308064",
+      "checkout": "third_party/multi-memory",
+      "note": "Multi-memory proposal."
+    },
+    {
+      "id": "multi-value",
+      "feature": "multi-value",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/multi-value.git",
+      "commit": "61975c83a286b96517659eded062f4e11dbac4c7",
+      "checkout": "third_party/multi-value",
+      "note": "Multi-value proposal."
+    },
+    {
+      "id": "sign-extension-ops",
+      "feature": "sign-extension-ops",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/sign-extension-ops.git",
+      "commit": "a09a028ee7106d3d3ab8fe11b8e18b2e5263aa07",
+      "checkout": "third_party/sign-extension-ops",
+      "note": "Sign extension operations proposal."
+    },
+    {
+      "id": "bulk-memory-operations",
+      "feature": "bulk-memory-operations",
+      "profiles": ["all", "proposals"],
+      "repo": "https://github.com/WebAssembly/bulk-memory-operations.git",
+      "commit": "dcaa1b6791401c29b67e8cd7929ec80949f1f849",
+      "checkout": "third_party/bulk-memory-operations",
+      "note": "Bulk memory operations proposal."
+    }
+  ]
+}

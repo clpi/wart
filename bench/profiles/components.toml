@@ -1,0 +1,5 @@
+profile = "components"
+description = "Reserved for pinned component-model and WIT benchmarks once linked guest fixtures are wired into the harness."
+default_runs = 5
+warmup_runs = 1
+prepare = ["zig build"]
