@@ -437,7 +437,7 @@ inline fn fastF64Ge(stack: *SmallVec(Value, 256)) !void {
 }
 
 // Advanced inline caching with prediction and prefetching
-var OPCODE_CACHE: [256]?OpHandlerFn = [_]?OpHandlerFn{null} ** 256;
+var OPCODE_CACHE: [256]?OpHandlerFn = [_]?OpHandlerFn{null}**256;
 var cached_opcode: u8 = 0xFF;
 var cached_handler: ?OpHandlerFn = null;
 var prediction_cache: [16]u8 = [_]u8{0} ** 16; // Branch prediction cache

@@ -168,7 +168,7 @@ test "crypto - verify signature" {
     defer crypto.deinit();
 
     const key_id = try crypto.generateKey(.ed25519, false);
-    const valid = try crypto.verify(key_id, "test data", &[_]u8{0} ** 64);
+    const valid = try crypto.verify(key_id, "test data", &[_]u8{0}**64);
     try testing.expect(valid);
 }
 

@@ -12,7 +12,7 @@ const BulkOperations = bulk.BulkOperations;
 // Memory Operations Tests
 
 test "memory.copy - non-overlapping forward" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
     @memcpy(memory[10..15], &[_]u8{ 1, 2, 3, 4, 5 });
 
     try MemoryOps.copy(&memory, 20, 10, 5);
@@ -21,7 +21,7 @@ test "memory.copy - non-overlapping forward" {
 }
 
 test "memory.copy - non-overlapping backward" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
     @memcpy(memory[20..25], &[_]u8{ 1, 2, 3, 4, 5 });
 
     try MemoryOps.copy(&memory, 10, 20, 5);
@@ -30,7 +30,7 @@ test "memory.copy - non-overlapping backward" {
 }
 
 test "memory.copy - overlapping forward" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
     @memcpy(memory[10..15], &[_]u8{ 1, 2, 3, 4, 5 });
 
     try MemoryOps.copy(&memory, 12, 10, 5);
@@ -39,7 +39,7 @@ test "memory.copy - overlapping forward" {
 }
 
 test "memory.copy - overlapping backward" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
     @memcpy(memory[12..17], &[_]u8{ 1, 2, 3, 4, 5 });
 
     try MemoryOps.copy(&memory, 10, 12, 5);
@@ -48,7 +48,7 @@ test "memory.copy - overlapping backward" {
 }
 
 test "memory.copy - same position" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
     @memcpy(memory[10..15], &[_]u8{ 1, 2, 3, 4, 5 });
 
     try MemoryOps.copy(&memory, 10, 10, 5);
@@ -57,7 +57,7 @@ test "memory.copy - same position" {
 }
 
 test "memory.copy - bounds checking" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
 
     const result1 = MemoryOps.copy(&memory, 150, 10, 5);
     try testing.expectError(error.OutOfBoundsMemoryAccess, result1);
@@ -70,7 +70,7 @@ test "memory.copy - bounds checking" {
 }
 
 test "memory.fill - basic" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
 
     try MemoryOps.fill(&memory, 10, 0x42, 10);
 
@@ -80,7 +80,7 @@ test "memory.fill - basic" {
 }
 
 test "memory.fill - full region" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
 
     try MemoryOps.fill(&memory, 0, 0xFF, 100);
 
@@ -90,7 +90,7 @@ test "memory.fill - full region" {
 }
 
 test "memory.fill - bounds checking" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
 
     const result1 = MemoryOps.fill(&memory, 150, 0x42, 5);
     try testing.expectError(error.OutOfBoundsMemoryAccess, result1);
@@ -100,7 +100,7 @@ test "memory.fill - bounds checking" {
 }
 
 test "memory.init - basic" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
     const data = [_]u8{ 10, 20, 30, 40, 50 };
 
     try MemoryOps.init(&memory, &data, 10, 0, 5);
@@ -109,7 +109,7 @@ test "memory.init - basic" {
 }
 
 test "memory.init - partial segment" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
     const data = [_]u8{ 10, 20, 30, 40, 50, 60, 70 };
 
     try MemoryOps.init(&memory, &data, 10, 2, 3);
@@ -118,7 +118,7 @@ test "memory.init - partial segment" {
 }
 
 test "memory.init - bounds checking" {
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
     const data = [_]u8{ 10, 20, 30, 40, 50 };
 
     const result1 = MemoryOps.init(&memory, &data, 150, 0, 5);
@@ -307,7 +307,7 @@ test "bulk operations - memory.init" {
     const data = [_]u8{ 10, 20, 30, 40, 50 };
     const data_idx = try bulk_ops.data_mgr.addSegment(&data);
 
-    var memory = [_]u8{0} ** 100;
+    var memory = [_]u8{0}**100;
     try bulk_ops.memoryInit(&memory, data_idx, 10, 0, 5);
 
     try testing.expectEqualSlices(u8, &data, memory[10..15]);
