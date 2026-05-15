@@ -129,7 +129,7 @@ test "memory.init - bounds checking" {
 }
 
 test "memory.zero - basic" {
-    var memory = [_]u8{0xFF} ** 100;
+    var memory = [_]u8{0xFF}**100;
 
     try MemoryOps.zero(&memory, 10, 20);
 

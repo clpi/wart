@@ -275,7 +275,7 @@ pub fn executeSIMD(
 
             if (memory) |mem| {
                 if (addr + 4 > mem.len) return Error.InvalidAccess;
-                var result: [16]u8 = [_]u8{0} ** 16;
+                var result: [16]u8 = [_]u8{0}**16;
                 @memcpy(result[0..4], mem[addr .. addr + 4]);
                 try stack.append(allocator, .{ .v128 = result });
             } else {
@@ -294,7 +294,7 @@ pub fn executeSIMD(
 
             if (memory) |mem| {
                 if (addr + 8 > mem.len) return Error.InvalidAccess;
-                var result: [16]u8 = [_]u8{0} ** 16;
+                var result: [16]u8 = [_]u8{0}**16;
                 @memcpy(result[0..8], mem[addr .. addr + 8]);
                 try stack.append(allocator, .{ .v128 = result });
             } else {
