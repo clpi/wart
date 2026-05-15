@@ -141,7 +141,7 @@ test "memory.zero - basic" {
 // Table Operations Tests
 
 test "table.copy - non-overlapping" {
-    var table = [_]Value{Value{ .i32 = 0 }} ** 100;
+    var table = [_]Value{Value{ .i32 = 0 }}**100;
     for (10..15) |i| {
         table[i] = Value{ .i32 = @intCast(i) };
     }
@@ -154,7 +154,7 @@ test "table.copy - non-overlapping" {
 }
 
 test "table.copy - overlapping forward" {
-    var table = [_]Value{Value{ .i32 = 0 }} ** 100;
+    var table = [_]Value{Value{ .i32 = 0 }}**100;
     for (10..15) |i| {
         table[i] = Value{ .i32 = @intCast(i) };
     }
@@ -166,8 +166,8 @@ test "table.copy - overlapping forward" {
 }
 
 test "table.copy - different tables" {
-    var dst_table = [_]Value{Value{ .i32 = 0 }} ** 50;
-    var src_table = [_]Value{Value{ .i32 = 0 }} ** 50;
+    var dst_table = [_]Value{Value{ .i32 = 0 }}**50;
+    var src_table = [_]Value{Value{ .i32 = 0 }}**50;
     
     for (10..15) |i| {
         src_table[i] = Value{ .i32 = @intCast(i) };
@@ -181,7 +181,7 @@ test "table.copy - different tables" {
 }
 
 test "table.fill - basic" {
-    var table = [_]Value{Value{ .i32 = 0 }} ** 100;
+    var table = [_]Value{Value{ .i32 = 0 }}**100;
     const fill_value = Value{ .i32 = 42 };
 
     try TableOps.fill(&table, 10, fill_value, 10);
@@ -192,7 +192,7 @@ test "table.fill - basic" {
 }
 
 test "table.init - basic" {
-    var table = [_]Value{Value{ .i32 = 0 }} ** 100;
+    var table = [_]Value{Value{ .i32 = 0 }}**100;
     const elems = [_]Value{
         Value{ .i32 = 10 },
         Value{ .i32 = 20 },
@@ -207,7 +207,7 @@ test "table.init - basic" {
 }
 
 test "table.size - basic" {
-    const table = [_]Value{Value{ .i32 = 0 }} ** 50;
+    const table = [_]Value{Value{ .i32 = 0 }}**50;
     const size = TableOps.size(&table);
     try testing.expectEqual(@as(u32, 50), size);
 }
@@ -324,7 +324,7 @@ test "bulk operations - table.init" {
     };
     const elem_idx = try bulk_ops.elem_mgr.addSegment(&elems);
 
-    var table = [_]Value{Value{ .i32 = 0 }} ** 50;
+    var table = [_]Value{Value{ .i32 = 0 }}**50;
     try bulk_ops.tableInit(&table, elem_idx, 10, 0, 2);
 
     try testing.expectEqual(@as(i32, 100), table[10].i32);

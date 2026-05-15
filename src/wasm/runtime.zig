@@ -3825,7 +3825,7 @@ inline fn readLittle(self: *Runtime, comptime T: type, addr: usize) !T {
         }
     }
     // Read the available bytes and pad with zeros
-    var buffer: [@sizeOf(T)]u8 = [_]u8{0} ** @sizeOf(T);
+    var buffer: [@sizeOf(T)]u8 = [_]u8{0}**@sizeOf(T);
     const available = m.len - addr;
     @memcpy(buffer[0..available], m[addr..m.len]);
     return std.mem.readInt(T, &buffer, .little);
