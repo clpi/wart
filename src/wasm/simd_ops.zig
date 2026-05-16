@@ -178,7 +178,7 @@ pub fn executeSIMD(
             if (memory) |mem| {
                 if (addr + 1 > mem.len) return Error.InvalidAccess;
                 const val = mem[addr];
-                try stack.append(allocator, .{ .v128 = [_]u8{val} ** 16 });
+                try stack.append(allocator, .{ .v128 = [_]u8{val} **16 });
             } else {
                 return Error.InvalidAccess;
             }
@@ -275,7 +275,7 @@ pub fn executeSIMD(
 
             if (memory) |mem| {
                 if (addr + 4 > mem.len) return Error.InvalidAccess;
-                var result: [16]u8 = [_]u8{0} ** 16;
+                var result: [16]u8 = [_]u8{0} **16;
                 @memcpy(result[0..4], mem[addr .. addr + 4]);
                 try stack.append(allocator, .{ .v128 = result });
             } else {
@@ -294,7 +294,7 @@ pub fn executeSIMD(
 
             if (memory) |mem| {
                 if (addr + 8 > mem.len) return Error.InvalidAccess;
-                var result: [16]u8 = [_]u8{0} ** 16;
+                var result: [16]u8 = [_]u8{0} **16;
                 @memcpy(result[0..8], mem[addr .. addr + 8]);
                 try stack.append(allocator, .{ .v128 = result });
             } else {
@@ -308,7 +308,7 @@ pub fn executeSIMD(
             if (stack.items.len < 1) return Error.StackUnderflow;
             const val = stack.pop().?;
             const byte: u8 = @truncate(@as(u32, @bitCast(val.i32)));
-            try stack.append(allocator, .{ .v128 = [_]u8{byte} ** 16 });
+            try stack.append(allocator, .{ .v128 = [_]u8{byte} **16 });
         },
 
         .i16x8_splat => {
@@ -2566,7 +2566,7 @@ pub fn executeSIMD(
             if (stack.items.len < 1) return Error.StackUnderflow;
             const a_v128 = stack.pop().?.v128;
             const a = simd.asF64x2(a_v128);
-            var result: [4]i32 = [_]i32{0} ** 4;
+            var result: [4]i32 = [_]i32{0} **4;
             for (0..2) |i| {
                 const val = @trunc(a[i]);
                 result[i] = if (std.math.isNan(val)) 0 else if (val >= 2147483647.0) 2147483647 else if (val <= -2147483648.0) -2147483648 else @intFromFloat(val);
@@ -2578,7 +2578,7 @@ pub fn executeSIMD(
             if (stack.items.len < 1) return Error.StackUnderflow;
             const a_v128 = stack.pop().?.v128;
             const a = simd.asF64x2(a_v128);
-            var result: [4]i32 = [_]i32{0} ** 4;
+            var result: [4]i32 = [_]i32{0} **4;
             for (0..2) |i| {
                 const val = @trunc(a[i]);
                 result[i] = @bitCast(if (std.math.isNan(val)) @as(u32, 0) else if (val >= 4294967295.0) @as(u32, 4294967295) else if (val <= 0.0) @as(u32, 0) else @as(u32, @intFromFloat(val)));
@@ -2613,7 +2613,7 @@ pub fn executeSIMD(
             if (stack.items.len < 1) return Error.StackUnderflow;
             const a_v128 = stack.pop().?.v128;
             const a = simd.asF64x2(a_v128);
-            var result: [4]f32 = [_]f32{0.0} ** 4;
+            var result: [4]f32 = [_]f32{0.0} **4;
             for (0..2) |i| {
                 result[i] = @floatCast(a[i]);
             }

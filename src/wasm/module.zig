@@ -383,7 +383,7 @@ pub fn parse(allocator: Allocator, io: std.Io, bytes: []const u8) !*Module {
                                 .f64 => .{ .f64 = 0.0 },
                                 .funcref => .{ .funcref = null },
                                 .externref => .{ .externref = null },
-                                .v128 => .{ .v128 = [_]u8{0} ** 16 },
+                                .v128 => .{ .v128 = [_]u8{0} **16 },
                                 else => .{ .i32 = 0 }, // Default to i32 for unknown types
                             };
 

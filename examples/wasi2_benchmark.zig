@@ -62,7 +62,7 @@ const AsyncTask = struct {
 
 // Shared memory for concurrency testing
 var shared_counter: u32 = 0;
-var task_results: [10]?[]const u8 = [_]?[]const u8{null} ** 10;
+var task_results: [10]?[]const u8 = [_]?[]const u8{null} **10;
 
 export fn _start() void {
     main() catch |err| {
