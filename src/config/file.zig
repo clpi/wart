@@ -185,7 +185,7 @@ fn stripOptionalQuotes(value: []const u8) []const u8 {
 }
 
 fn getEnvVarOwnedOrNull(allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
-    const name_z = try allocator.dupeZ(u8, name);
+    const name_z = try std.fmt.allocPrintZ(allocator, "{s}", .{name});
     defer allocator.free(name_z);
 
     const value = std.c.getenv(name_z.ptr) orelse return null;
