@@ -278,7 +278,7 @@ fn createTarArchive(allocator: std.mem.Allocator, files: []const FileEntry) ![]u
     }
 
     // Write two empty blocks to end the archive
-    const end_blocks = [_]u8{0}**1024;
+    const end_blocks = [_]u8{0} ** 1024;
     try buffer.appendSlice(allocator, &end_blocks);
 
     return buffer.toOwnedSlice(allocator);
