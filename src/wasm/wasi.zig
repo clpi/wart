@@ -630,10 +630,7 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
 
     // Security: Check for absolute paths
     if (std.fs.path.isAbsolute(path)) {
-        // In WASI, absolute paths are generally not allowed unless they are within a preopen
-        // For simplicity, we treat them as relative to the base_path if they start with /
-        // but it's safer to just strip the leading slash or return an error.
-        // Most WASI implementations treat absolute paths as relative to the root of the preopen.
+        return error.AccessDenied;
     }
 
     // Security: Path normalization and traversal prevention
