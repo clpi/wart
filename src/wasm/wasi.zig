@@ -638,15 +638,17 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
 
     // Security: Path normalization and traversal prevention
     // We check that the path does not escape the base_path by tracking directory depth.
+    // Security: Path normalization and traversal prevention
+    // We check that the path does not escape the base_path by tracking directory depth.
     var depth: i32 = 0;
     var it = std.mem.tokenizeAny(u8, path, "/\\");
     while (it.next()) |component| {
         if (std.mem.eql(u8, component, "..")) {
             depth -= 1;
-        } else if (!std.mem.eql(u8, component, ".")) {
-            depth += 1;
+            if (depth < 0) return error.AccessDenied;
         }
-        if (depth < 0) return error.AccessDenied;
+        // Note: Normal components and "." don't affect depth
+    }
     }
 
     return std.fmt.bufPrintZ(out_buf, "{s}/{s}", .{ base_path, path }) catch error.NameTooLong;
