@@ -120,7 +120,7 @@ pub const CodeGen = struct {
             .buffer = std.ArrayList(u8).empty,
             .allocator = allocator,
             .value_stack = std.ArrayList(StackSlot).empty,
-            .registers = [_]?StackSlot{null} ** 16,
+            .registers = [_]?StackSlot{null}**16,
             .next_spill_offset = -8,
             .control_stack = std.ArrayList(ControlFrame).empty,
         };

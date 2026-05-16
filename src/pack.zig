@@ -216,7 +216,7 @@ fn createTarArchive(allocator: std.mem.Allocator, files: []const FileEntry) ![]u
 
     for (files) |file| {
         // Create TAR header (512 bytes)
-        var header: [512]u8 = [_]u8{0} ** 512;
+        var header: [512]u8 = [_]u8{0}**512;
 
         // Name (100 bytes)
         // Name (100 bytes) - validate path length
@@ -278,7 +278,7 @@ fn createTarArchive(allocator: std.mem.Allocator, files: []const FileEntry) ![]u
     }
 
     // Write two empty blocks to end the archive
-    const end_blocks = [_]u8{0} ** 1024;
+    const end_blocks = [_]u8{0}**1024;
     try buffer.appendSlice(allocator, &end_blocks);
 
     return buffer.toOwnedSlice(allocator);
