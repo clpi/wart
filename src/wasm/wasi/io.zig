@@ -329,7 +329,7 @@ pub const Streams = struct {
 
         if (amount == 0) return .{ .ok = 0 };
 
-        var zeros: [4096]u8 = [_]u8{0} ** 4096;
+        var zeros: [4096]u8 = [_]u8{0}**4096;
         var remaining = amount;
         var total: usize = 0;
 
