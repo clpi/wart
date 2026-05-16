@@ -202,6 +202,8 @@ test "defaultConfigDir falls back to .wart if HOME is not set" {
 
     defer if (old_home) |h| {
         _ = setenv("HOME", h, 1);
+    } else {
+        _ = unsetenv("HOME");
     };
 
     _ = unsetenv("HOME");
