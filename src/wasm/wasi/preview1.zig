@@ -203,8 +203,8 @@ pub const Preview1 = struct {
 
     /// Set file or directory timestamps
     /// Import: "wasi_snapshot_preview1"."path_filestat_set_times"
-    pub fn path_filestat_set_times(self: *Preview1, dirfd: i32, flags: i32, path_ptr: i32, path_len: i32, atim: i64, mtim: i64, fst_flags: i32) !i32 {
-        return self.wasi.path_filestat_set_times(dirfd, flags, path_ptr, path_len, atim, mtim, fst_flags);
+    pub fn path_filestat_set_times(self: *Preview1, dirfd: i32, flags: i32, path_ptr: i32, path_len: i32, atim: i64, mtim: i64, fst_flags: i32, module: *Module) !i32 {
+        return self.wasi.path_filestat_set_times(dirfd, flags, path_ptr, path_len, atim, mtim, fst_flags, module);
     }
 
     /// Create a hard link
