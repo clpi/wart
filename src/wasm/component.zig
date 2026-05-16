@@ -2373,7 +2373,7 @@ pub const ComponentParser = struct {
     }
 
     fn parseTypeSection(self: *Self, component: *Component, size: usize) !void {
-        _ = size; // TODO: Use size for bounds checking
+        const start_pos = self.reader.pos;
         const count = try self.reader.readLEB128();
 
         try component.types.ensureTotalCapacity(component.allocator, count);
@@ -2382,6 +2382,10 @@ pub const ComponentParser = struct {
         while (i < count) : (i += 1) {
             const ty = try self.parseComponentType(component.allocator);
             try component.types.append(component.allocator, ty);
+        }
+
+        if (self.reader.pos - start_pos != size) {
+            return error.SectionSizeMismatch;
         }
     }
 
@@ -2643,7 +2647,7 @@ pub const ComponentParser = struct {
     }
 
     fn parseCodeSection(self: *Self, component: *Component, size: usize) !void {
-        _ = size; // TODO: Use for bounds checking
+        const start_pos = self.reader.pos;
         const count = try self.reader.readLEB128();
 
         try component.function_bodies.ensureTotalCapacity(component.allocator, count);
@@ -2652,6 +2656,10 @@ pub const ComponentParser = struct {
         while (i < count) : (i += 1) {
             const body = try self.parseComponentFunctionBody(component.allocator);
             try component.function_bodies.append(component.allocator, body);
+        }
+
+        if (self.reader.pos - start_pos != size) {
+            return error.SectionSizeMismatch;
         }
     }
 
