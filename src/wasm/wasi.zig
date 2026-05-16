@@ -2349,8 +2349,20 @@ pub fn path_rename(self: *WASI, old_fd: i32, old_path_ptr: i32, old_path_len: i3
         // Build full paths
         var old_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
         var new_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const old_full_path = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch return 63;
-        const new_full_path = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch return 63;
+        const old_full_path = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
+        const new_full_path = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
         const old_dir = std.Io.Dir.openDirAbsolute(self.io, old_full_path, .{}) catch {
             return 44; // ENOENT
         };
