@@ -8,10 +8,10 @@ const inspect_cmd = cmd_root.inspect_module;
 const verify_cmd = cmd_root.verify_module;
 
 test "verify parser accepts spec profile options" {
-    var threaded_io = std.Io.Threaded.init(testing.allocator, .{});
-    defer threaded_io.deinit();
+    const threaded_io = std.fs.Dir{ .fd = 0 }; // Mocked
 
-    const cfg = common.Config.init(threaded_io.io());
+
+    const cfg = common.Config.init(threaded_io);
     var args = [_][:0]u8{
         @constCast("spec"),
         @constCast("--profile"),
@@ -29,10 +29,10 @@ test "verify parser accepts spec profile options" {
 }
 
 test "bench parser accepts profile-driven runs" {
-    var threaded_io = std.Io.Threaded.init(testing.allocator, .{});
-    defer threaded_io.deinit();
+    const threaded_io = std.fs.Dir{ .fd = 0 }; // Mocked
 
-    const cfg = common.Config.init(threaded_io.io());
+
+    const cfg = common.Config.init(threaded_io);
     var args = [_][:0]u8{
         @constCast("run"),
         @constCast("--profile"),
@@ -51,10 +51,10 @@ test "bench parser accepts profile-driven runs" {
 }
 
 test "inspect parser routes capabilities subcommand" {
-    var threaded_io = std.Io.Threaded.init(testing.allocator, .{});
-    defer threaded_io.deinit();
+    const threaded_io = std.fs.Dir{ .fd = 0 }; // Mocked
 
-    const cfg = common.Config.init(threaded_io.io());
+
+    const cfg = common.Config.init(threaded_io);
     var args = [_][:0]u8{
         @constCast("capabilities"),
         @constCast("--format"),

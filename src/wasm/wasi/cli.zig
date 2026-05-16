@@ -45,7 +45,7 @@ pub const Environment = struct {
 
     pub fn init(allocator: std.mem.Allocator) Environment {
         return Environment{
-            .args = .empty,
+            .args = std.ArrayList([]const u8).init(allocator),
             .env = std.StringHashMap([]const u8).init(allocator),
             .working_dir = allocator.dupe(u8, "/") catch @panic("out of memory"),
             .allocator = allocator,
@@ -56,7 +56,7 @@ pub const Environment = struct {
         for (self.args.items) |arg| {
             self.allocator.free(arg);
         }
-        self.args.deinit(self.allocator);
+        self.args.deinit();
 
         var env_iter = self.env.iterator();
         while (env_iter.next()) |entry| {
@@ -75,7 +75,7 @@ pub const Environment = struct {
         while (self.args.items.len <= index) {
             const empty_arg = try self.allocator.dupe(u8, "");
             errdefer self.allocator.free(empty_arg);
-            try self.args.append(self.allocator, empty_arg);
+            try self.args.append(empty_arg);
         }
 
         self.allocator.free(self.args.items[index]);
@@ -149,7 +149,7 @@ pub const CLI = struct {
             for (self.args.items) |argument| {
                 self.allocator.free(@constCast(argument));
             }
-            self.args.deinit(self.allocator);
+            self.args.deinit();
             for (self.env.items) |entry| {
                 self.allocator.free(@constCast(entry.key));
                 self.allocator.free(@constCast(entry.value));

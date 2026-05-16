@@ -122,7 +122,7 @@ pub const Future = struct {
         self.condition.broadcast();
     }
 
-    pub fn await(self: *Future) void {
+    pub fn await_(self: *Future) void {
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -146,7 +146,7 @@ pub const Channel = struct {
         return Channel{
             .id = id,
             .allocator = allocator,
-            .buffer = .empty,
+            .buffer = std.ArrayList([]const u8).init(allocator),
             .capacity = capacity,
             .closed = false,
             .mutex = Mutex{},
@@ -159,7 +159,7 @@ pub const Channel = struct {
         for (self.buffer.items) |item| {
             self.allocator.free(item);
         }
-        self.buffer.deinit(self.allocator);
+        self.buffer.deinit();
     }
 
     pub fn send(self: *Channel, data: []const u8) !void {
@@ -179,7 +179,7 @@ pub const Channel = struct {
         }
 
         const owned_data = try self.allocator.dupe(u8, data);
-        try self.buffer.append(self.allocator, owned_data);
+        try self.buffer.append(owned_data);
         self.recv_condition.signal();
     }
 
@@ -235,8 +235,8 @@ pub const WasiConcurrency = struct {
             .next_task_id = 1,
             .next_future_id = 1,
             .next_channel_id = 1,
-            .thread_pool = .empty,
-            .task_queue = .empty,
+            .thread_pool = std.ArrayList(std.Thread).init(allocator),
+            .task_queue = std.ArrayList(u32).init(allocator),
             .queue_mutex = Mutex{},
             .queue_condition = Condition{},
             .shutdown = false,
@@ -247,7 +247,7 @@ pub const WasiConcurrency = struct {
         var i: usize = 0;
         while (i < num_threads) : (i += 1) {
             const thread = try Thread.spawn(.{}, workerThread, .{concurrency});
-            try concurrency.thread_pool.append(allocator, thread);
+            try concurrency.thread_pool.append(thread);
         }
 
         return concurrency;
@@ -264,7 +264,7 @@ pub const WasiConcurrency = struct {
         for (self.thread_pool.items) |thread| {
             thread.join();
         }
-        self.thread_pool.deinit(self.allocator);
+        self.thread_pool.deinit();
 
         // Clean up tasks
         var task_iter = self.tasks.iterator();
@@ -290,7 +290,7 @@ pub const WasiConcurrency = struct {
         }
         self.channels.deinit();
 
-        self.task_queue.deinit(self.allocator);
+        self.task_queue.deinit();
         self.allocator.destroy(self);
     }
 
@@ -343,7 +343,7 @@ pub const WasiConcurrency = struct {
         self.queue_mutex.lock();
         defer self.queue_mutex.unlock();
 
-        try self.task_queue.append(self.allocator, task_id);
+        try self.task_queue.append(task_id);
         self.queue_condition.signal();
 
         return task_id;
@@ -408,7 +408,7 @@ pub const WasiConcurrency = struct {
     pub fn awaitFuture(self: *WasiConcurrency, future_id: FutureHandle) !?[]const u8 {
         const future = self.futures.get(future_id) orelse return ConcurrencyError.InvalidFuture;
 
-        future.await();
+        future.await_();
 
         if (future.error_msg != null) {
             return ConcurrencyError.TaskCancelled;

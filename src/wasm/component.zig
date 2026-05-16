@@ -168,7 +168,7 @@ pub const CoreAlias = union(enum) {
 pub const ResourceTable = struct {
     const Self = @This();
 
-    io: std.Io,
+    io: std.fs.Dir,
     allocator: std.mem.Allocator,
     handles: std.ArrayList(u32), // WASI handles
     resource_types: std.ArrayList(ResourceType),
@@ -581,14 +581,14 @@ pub const ComponentInstance = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    io: std.Io,
+    io: std.fs.Dir,
     component: *const Component,
     exports: std.StringHashMap(ComponentValue),
     imports: std.StringHashMap(ComponentValue),
     resource_table: ResourceTable,
     nested_instances: std.ArrayList(*ComponentInstance),
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, component: *const Component) !Self {
+    pub fn init(allocator: std.mem.Allocator, io: std.fs.Dir, component: *const Component) !Self {
         return Self{
             .allocator = allocator,
             .component = component,
@@ -639,12 +639,11 @@ pub const ComponentInstance = struct {
             try self.imports.put(key, entry.value_ptr.*);
         }
 
-        // TODO: Initialize exports based on component definition
-        // For now, create empty exports
+        // Initialize exports based on component definition
         for (self.component.exports.items) |export_item| {
             const key = try self.allocator.dupe(u8, export_item.name);
-            // TODO: Create actual export values
-            try self.exports.put(key, ComponentValue{ .bool = false }); // Placeholder
+            const val = try createDefaultValue(self.allocator, self.component, export_item.ty_idx);
+            try self.exports.put(key, val);
         }
     }
 
@@ -658,6 +657,74 @@ pub const ComponentInstance = struct {
 };
 
 // Component Values (for runtime)
+
+// Helper to initialize default component values
+pub fn createDefaultValue(allocator: std.mem.Allocator, component: *const Component, ty_idx: u32) !ComponentValue {
+    if (ty_idx >= component.types.items.len) return error.InvalidTypeIndex;
+    const ty = &component.types.items[ty_idx];
+
+    switch (ty.payload) {
+        .bool => return ComponentValue{ .bool = false },
+        .s8 => return ComponentValue{ .s8 = 0 },
+        .u8 => return ComponentValue{ .u8 = 0 },
+        .s16 => return ComponentValue{ .s16 = 0 },
+        .u16 => return ComponentValue{ .u16 = 0 },
+        .s32 => return ComponentValue{ .s32 = 0 },
+        .u32 => return ComponentValue{ .u32 = 0 },
+        .s64 => return ComponentValue{ .s64 = 0 },
+        .u64 => return ComponentValue{ .u64 = 0 },
+        .float32 => return ComponentValue{ .float32 = 0.0 },
+        .float64 => return ComponentValue{ .float64 = 0.0 },
+        .char => return ComponentValue{ .char = 0 },
+        .string => return ComponentValue{ .string = try allocator.alloc(u8, 0) },
+        .record => |record_type| {
+            var map = std.StringHashMap(ComponentValue).init(allocator);
+            errdefer map.deinit();
+            for (record_type.fields) |field| {
+                const key = try allocator.dupe(u8, field.name);
+                const val = try createDefaultValue(allocator, component, field.ty_idx);
+                try map.put(key, val);
+            }
+            return ComponentValue{ .record = map };
+        },
+        .variant => |variant_type| {
+            if (variant_type.cases.len == 0) return error.EmptyVariant;
+            const first_case = variant_type.cases[0];
+            const case_name = try allocator.dupe(u8, first_case.name);
+            var val: ?*ComponentValue = null;
+            if (first_case.ty_idx) |idx| {
+                val = try allocator.create(ComponentValue);
+                errdefer allocator.destroy(val.?);
+                val.?.* = try createDefaultValue(allocator, component, idx);
+            }
+            return ComponentValue{ .variant = .{ .case = case_name, .value = val } };
+        },
+        .list => return ComponentValue{ .list = try allocator.alloc(ComponentValue, 0) },
+        .tuple => return ComponentValue{ .tuple = try allocator.alloc(ComponentValue, 0) },
+        .flags => return ComponentValue{ .flags = std.StringHashMap(bool).init(allocator) },
+        .@"enum" => return ComponentValue{ .@"enum" = try allocator.alloc(u8, 0) },
+        .@"union" => {
+            const val = try allocator.create(ComponentValue);
+            errdefer allocator.destroy(val);
+            val.* = ComponentValue{ .bool = false };
+            return ComponentValue{ .@"union" = .{ .case = 0, .value = val } };
+        },
+        .option => return ComponentValue{ .option = null },
+        .result => |res| {
+            const val = try allocator.create(ComponentValue);
+            errdefer allocator.destroy(val);
+            if (res.ok) |idx| {
+                val.* = try createDefaultValue(allocator, component, idx);
+            } else {
+                val.* = ComponentValue{ .bool = false };
+            }
+            return ComponentValue{ .result = .{ .ok = val } };
+        },
+        .own => return ComponentValue{ .own = 0 },
+        .borrow => return ComponentValue{ .borrow = 0 },
+    }
+}
+
 pub const ComponentValue = union(ComponentValueTag) {
     const Self = @This();
 
@@ -2172,9 +2239,9 @@ pub const ComponentParser = struct {
 
     reader: Module.Reader,
     allocator: std.mem.Allocator,
-    io: std.Io,
+    io: std.fs.Dir,
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, data: []const u8) Self {
+    pub fn init(allocator: std.mem.Allocator, io: std.fs.Dir, data: []const u8) Self {
         return Self{
             .reader = Module.Reader.init(data),
             .allocator = allocator,
@@ -2892,7 +2959,7 @@ pub const ComponentLinker = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    io: std.Io,
+    io: std.fs.Dir,
     loaded_components: std.StringHashMap(*ComponentInstance),
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io) Self {
@@ -3039,7 +3106,7 @@ pub const ESMLoader = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    io: std.Io,
+    io: std.fs.Dir,
     linker: ComponentLinker,
     module_registry: std.StringHashMap(*ComponentInstance),
     import_map: std.StringHashMap([]const u8),
@@ -3096,9 +3163,8 @@ pub const ESMLoader = struct {
         // Initialize exports based on component definition
         for (component.exports.items) |export_item| {
             const key = try self.allocator.dupe(u8, export_item.name);
-            // For now, use placeholder values - in a real implementation, these would be
-            // properly initialized based on the component's export definitions
-            try instance.exports.put(key, ComponentValue{ .bool = false });
+            const val = try createDefaultValue(self.allocator, component, export_item.ty_idx);
+            try instance.exports.put(key, val);
         }
     }
 

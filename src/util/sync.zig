@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub const Mutex = struct {
-    state: std.atomic.Mutex = .unlocked,
+    state: std.Thread.Mutex = .{},
 
     pub fn lock(self: *Mutex) void {
         while (!self.state.tryLock()) {
