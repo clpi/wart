@@ -2275,8 +2275,20 @@ pub fn path_link(self: *WASI, old_fd: i32, old_flags: i32, old_path_ptr: i32, ol
         // Build full paths
         var old_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
         var new_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const old_full_path: [*:0]const u8 = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch return 63;
-        const new_full_path: [*:0]const u8 = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch return 63;
+        const old_full_path: [*:0]const u8 = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
+        const new_full_path: [*:0]const u8 = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
 
         // Create hard link
         _ = std.posix.system.link(old_full_path, new_full_path);
