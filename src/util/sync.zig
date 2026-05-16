@@ -61,7 +61,7 @@ test "Condition wait releases and reacquires mutex" {
     }
 
     // When wait returns, the mutex must be locked by the calling thread
-    std.testing.expectEqual(@as(u32, 1), shared_state) catch unreachable;
+    try std.testing.expectEqual(@as(u32, 1), shared_state);
 
     mutex.unlock();
     thread.join();
