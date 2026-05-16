@@ -641,8 +641,9 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
         if (std.mem.eql(u8, component, "..")) {
             depth -= 1;
             if (depth < 0) return error.AccessDenied;
+        } else if (!std.mem.eql(u8, component, ".")) {
+            depth += 1;
         }
-        // Note: Normal components and "." don't affect depth
     }
 
     return std.fmt.bufPrintZ(out_buf, "{s}/{s}", .{ base_path, path }) catch error.NameTooLong;
