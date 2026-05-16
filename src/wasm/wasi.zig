@@ -1195,22 +1195,26 @@ fn resolveSafePath(path: []const u8) bool {
 }
 
 fn resolvePathWithinBase(
-    allocator: std.mem.Allocator,
-    cwd: std.fs.Dir,
-    canonical_base: []const u8,
-    candidate_path: []const u8,
-) bool {
-    const canonical_candidate = cwd.realpathAlloc(allocator, candidate_path) catch return false;
-    defer allocator.free(canonical_candidate);
+/// Check if a path is safe to resolve (prevents directory traversal attacks escaping the base path)
+fn resolveSafePath(path: []const u8) bool {
+    if (path.len == 0) return true;
+    if (path[0] == '/') return false; // Absolute paths are not safe
 
-    return pathWithinBase(canonical_base, canonical_candidate);
-}
+    // Reject embedded null bytes to prevent C-string truncation attacks
+    if (std.mem.indexOfScalar(u8, path, 0) != null) return false;
 
-fn pathWithinBase(canonical_base: []const u8, canonical_path: []const u8) bool {
-    if (!std.mem.startsWith(u8, canonical_path, canonical_base)) return false;
-    if (canonical_path.len == canonical_base.len) return true;
+    var depth: i32 = 0;
+    var it = std.mem.tokenizeScalar(u8, path, '/');
+    while (it.next()) |component| {
+        if (std.mem.eql(u8, component, "..")) {
+            depth -= 1;
+            if (depth < 0) return false;
+        } else if (!std.mem.eql(u8, component, ".") and component.len > 0) {
+            depth += 1;
+        }
+    }
 
-    return std.fs.path.isSep(canonical_path[canonical_base.len]);
+    return true;
 }
 
 pub fn path_open(self: *WASI, dirfd: i32, dirflags: i32, path_ptr: i32, path_len: i32, oflags: i32, fs_rights_base: i64, fs_rights_inheriting: i64, fdflags: i32, fd_ptr: i32, module: *Module) !i32 {
