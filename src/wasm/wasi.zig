@@ -2478,7 +2478,7 @@ pub fn path_symlink(self: *WASI, old_path_ptr: i32, old_path_len: i32, dirfd: i3
         const old_path = memory[@intCast(old_path_ptr) .. @as(usize, @intCast(old_path_ptr)) + @as(usize, @intCast(old_path_len))];
         const new_path = memory[@intCast(new_path_ptr) .. @as(usize, @intCast(new_path_ptr)) + @as(usize, @intCast(new_path_len))];
 
-        if (!resolveSafePath(old_path) or !resolveSafePath(new_path)) {
+        if (!resolveSafePath(new_path)) {
             return 28; // EINVAL
         }
 
