@@ -32,7 +32,6 @@ jobs:
           sudo apt-get install -y wabt hyperfine
           wat2wasm --version
           hyperfine --version
-          wasm3 --version
 
       - name: Install Wasmer
         run: |
