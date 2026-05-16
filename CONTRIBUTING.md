@@ -2,6 +2,10 @@
 
 ## Getting Started
 
+This codebase is based on >=`zig@0.17` or `zig@master`.
+
+ensure `zig build bench` always runs, update benchmarks coverage as necessary, zig build test should work too, and wart should be #1 in all benchmark results
+
 ```bash
 git clone https://github.com/clpi/wart.git
 cd wart

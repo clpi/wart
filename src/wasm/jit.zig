@@ -120,7 +120,7 @@ pub const CodeGen = struct {
             .buffer = std.ArrayList(u8).empty,
             .allocator = allocator,
             .value_stack = std.ArrayList(StackSlot).empty,
-            .registers = [_]?StackSlot{null} ** 16,
+            .registers = [_]?StackSlot{null}**16,
             .next_spill_offset = -8,
             .control_stack = std.ArrayList(ControlFrame).empty,
         };
@@ -454,24 +454,8 @@ pub fn init(allocator: Allocator, execute_function_callback: *const fn (*anyopaq
     // Allocate executable memory (64MB for high performance)
     const code_size = 64 * 1024 * 1024;
 
-    // Allocate executable memory using mmap
-    const code_memory = blk: {
-        const ptr = std.c.mmap(
-            null,
-            code_size,
-            std.c.PROT{ .READ = true, .WRITE = true, .EXEC = true },
-            std.c.MAP{ .TYPE = .PRIVATE, .ANONYMOUS = true },
-            -1,
-            0,
-        );
-
-        if (@intFromPtr(ptr) == @as(usize, @bitCast(@as(isize, -1)))) {
-            // mmap failed, fall back to regular allocation
-            break :blk try allocator.alloc(u8, code_size);
-        }
-
-        break :blk @as([*]u8, @ptrCast(ptr))[0..code_size];
-    };
+    // Allocate executable memory
+    const code_memory = try allocator.alloc(u8, code_size);
 
     return Self{
         .allocator = allocator,
