@@ -1169,6 +1169,26 @@ pub fn fd_fdstat_set_flags(_: *WASI, _: i32, _: i32) !i32 {
 }
 
 /// Open a file or directory (path_open)
+
+/// Check if a path is safe to resolve (prevents directory traversal attacks escaping the base path)
+fn resolveSafePath(path: []const u8) bool {
+    if (path.len == 0) return true;
+    if (path[0] == '/') return false; // Absolute paths are not safe
+
+    var depth: i32 = 0;
+    var it = std.mem.tokenizeScalar(u8, path, '/');
+    while (it.next()) |component| {
+        if (std.mem.eql(u8, component, "..")) {
+            depth -= 1;
+            if (depth < 0) return false;
+        } else if (!std.mem.eql(u8, component, ".") and component.len > 0) {
+            depth += 1;
+        }
+    }
+
+    return true;
+}
+
 pub fn path_open(self: *WASI, dirfd: i32, dirflags: i32, path_ptr: i32, path_len: i32, oflags: i32, fs_rights_base: i64, fs_rights_inheriting: i64, fdflags: i32, fd_ptr: i32, module: *Module) !i32 {
     _ = dirflags;
     _ = fs_rights_inheriting;
@@ -1186,6 +1206,10 @@ pub fn path_open(self: *WASI, dirfd: i32, dirflags: i32, path_ptr: i32, path_len
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
         logInfo("path={s}", .{path});
+
+        if (!resolveSafePath(path)) {
+            return 28; // EINVAL
+        }
 
         // Find base directory path for dirfd
         var base_path: []const u8 = ".";
@@ -1282,6 +1306,10 @@ pub fn path_filestat_get(self: *WASI, dirfd: i32, flags: i32, path_ptr: i32, pat
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
 
+        if (!resolveSafePath(path)) {
+            return 28; // EINVAL
+        }
+
         // Find base directory path for dirfd
         var base_path: []const u8 = ".";
         if (dirfd >= 3) {
@@ -1369,6 +1397,10 @@ pub fn path_filestat_set_times(self: *WASI, dirfd: i32, flags: i32, path_ptr: i3
         break :blk module_mem[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
     };
 
+    if (!resolveSafePath(path_bytes)) {
+        return 28; // EINVAL
+    }
+
     // Find base directory path for dirfd
     var base_path: []const u8 = ".";
     if (dirfd >= 3) {
@@ -1408,6 +1440,10 @@ pub fn path_remove_directory(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i
         }
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
+
+        if (!resolveSafePath(path)) {
+            return 28; // EINVAL
+        }
 
         // Find base directory path for dirfd
         var base_path: []const u8 = ".";
@@ -1450,6 +1486,10 @@ pub fn path_unlink_file(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i32, m
         }
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
+
+        if (!resolveSafePath(path)) {
+            return 28; // EINVAL
+        }
 
         // Find base directory path for dirfd
         var base_path: []const u8 = ".";
@@ -2210,6 +2250,10 @@ pub fn path_create_directory(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
 
+        if (!resolveSafePath(path)) {
+            return 28; // EINVAL
+        }
+
         // Find base directory path for dirfd
         var base_path: []const u8 = ".";
         if (dirfd >= 3) {
@@ -2257,6 +2301,10 @@ pub fn path_link(self: *WASI, old_fd: i32, old_flags: i32, old_path_ptr: i32, ol
         const old_path = memory[@intCast(old_path_ptr) .. @as(usize, @intCast(old_path_ptr)) + @as(usize, @intCast(old_path_len))];
         const new_path = memory[@intCast(new_path_ptr) .. @as(usize, @intCast(new_path_ptr)) + @as(usize, @intCast(new_path_len))];
 
+        if (!resolveSafePath(old_path) or !resolveSafePath(new_path)) {
+            return 28; // EINVAL
+        }
+
         // Find base directory paths
         var old_base_path: []const u8 = ".";
         var new_base_path: []const u8 = ".";
@@ -2293,6 +2341,10 @@ pub fn path_readlink(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i32, buf_
         }
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
+
+        if (!resolveSafePath(path)) {
+            return 28; // EINVAL
+        }
 
         // Find base directory path for dirfd
         var base_path: []const u8 = ".";
@@ -2344,6 +2396,10 @@ pub fn path_rename(self: *WASI, old_fd: i32, old_path_ptr: i32, old_path_len: i3
 
         const old_path = memory[@intCast(old_path_ptr) .. @as(usize, @intCast(old_path_ptr)) + @as(usize, @intCast(old_path_len))];
         const new_path = memory[@intCast(new_path_ptr) .. @as(usize, @intCast(new_path_ptr)) + @as(usize, @intCast(new_path_len))];
+
+        if (!resolveSafePath(old_path) or !resolveSafePath(new_path)) {
+            return 28; // EINVAL
+        }
 
         // Find base directory paths
         var old_base_path: []const u8 = ".";
@@ -2397,6 +2453,10 @@ pub fn path_symlink(self: *WASI, old_path_ptr: i32, old_path_len: i32, dirfd: i3
 
         const old_path = memory[@intCast(old_path_ptr) .. @as(usize, @intCast(old_path_ptr)) + @as(usize, @intCast(old_path_len))];
         const new_path = memory[@intCast(new_path_ptr) .. @as(usize, @intCast(new_path_ptr)) + @as(usize, @intCast(new_path_len))];
+
+        if (!resolveSafePath(old_path) or !resolveSafePath(new_path)) {
+            return 28; // EINVAL
+        }
 
         // Find base directory path for dirfd
         var base_path: []const u8 = ".";
