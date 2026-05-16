@@ -222,7 +222,7 @@ test "table.grow - basic" {
     try table.append(Value{ .i32 = 2 });
 
     const old_size = try TableOps.grow(allocator, &table, 3, Value{ .i32 = 0 });
-    
+
     try testing.expectEqual(@as(i32, 2), old_size);
     try testing.expectEqual(@as(usize, 5), table.items.len);
 }
@@ -338,7 +338,7 @@ test "memory operations - large copy" {
     defer testing.allocator.free(memory);
 
     // Fill source region
-    @memset(memory[0..512 * 1024], 0x42);
+    @memset(memory[0 .. 512 * 1024], 0x42);
 
     // Copy large region
     try MemoryOps.copy(memory, 512 * 1024, 0, 512 * 1024);
