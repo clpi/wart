@@ -604,6 +604,53 @@ pub fn fd_seek(self: *WASI, fd: i32, offset: i64, whence: i32, new_offset_ptr: i
     }
 }
 
+/// Helper function to safely resolve paths and prevent path traversal
+fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:0]const u8 {
+    // Find base directory path for dirfd
+    var base_path: []const u8 = ".";
+    if (dirfd >= 3) {
+        var found = false;
+        for (self.preopens.items) |preopen| {
+            if (preopen.fd == dirfd) {
+                base_path = preopen.path;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            // Check open_files if it's a directory
+            for (self.open_files.items) |open_file| {
+                if (open_file.fd == dirfd) {
+                    base_path = open_file.path;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Security: Check for absolute paths
+    if (std.fs.path.isAbsolute(path)) {
+        return error.AccessDenied;
+    }
+
+    // Security: Path normalization and traversal prevention
+    // We check that the path does not escape the base_path by tracking directory depth.
+    // Security: Path normalization and traversal prevention
+    // We check that the path does not escape the base_path by tracking directory depth.
+    var depth: i32 = 0;
+    var it = std.mem.tokenizeAny(u8, path, "/\\");
+    while (it.next()) |component| {
+        if (std.mem.eql(u8, component, "..")) {
+            depth -= 1;
+            if (depth < 0) return error.AccessDenied;
+        }
+        // Note: Normal components and "." don't affect depth
+    }
+    }
+
+    return std.fmt.bufPrintZ(out_buf, "{s}/{s}", .{ base_path, path }) catch error.NameTooLong;
+}
+
 /// Setup arguments in WASM memory
 pub fn setupArgs(self: *WASI, module: *Module) !struct { argc: i32, argv_ptr: i32 } {
     if (module.memory == null) {
@@ -1187,20 +1234,15 @@ pub fn path_open(self: *WASI, dirfd: i32, dirflags: i32, path_ptr: i32, path_len
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
         logInfo("path={s}", .{path});
 
-        // Find base directory path for dirfd
-        var base_path: []const u8 = ".";
-        if (dirfd >= 3) {
-            for (self.preopens.items) |preopen| {
-                if (preopen.fd == dirfd) {
-                    base_path = preopen.path;
-                    break;
-                }
-            }
-        }
-
         // Build full path
         var full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const full_path = std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ base_path, path }) catch return 63; // ENAMETOOLONG
+        const full_path = self.resolveSafePath(dirfd, path, &full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
 
         // Parse oflags - WASI oflags
         // 0x01 = CREAT, 0x02 = DIRECTORY, 0x04 = EXCL, 0x08 = TRUNC
@@ -1282,20 +1324,15 @@ pub fn path_filestat_get(self: *WASI, dirfd: i32, flags: i32, path_ptr: i32, pat
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
 
-        // Find base directory path for dirfd
-        var base_path: []const u8 = ".";
-        if (dirfd >= 3) {
-            for (self.preopens.items) |preopen| {
-                if (preopen.fd == dirfd) {
-                    base_path = preopen.path;
-                    break;
-                }
-            }
-        }
-
         // Build full path
         var full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const full_path = std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ base_path, path }) catch return 63; // ENAMETOOLONG
+        const full_path = self.resolveSafePath(dirfd, path, &full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
 
         // Get file stats
         const file = std.Io.Dir.cwd().openFile(io, full_path, .{}) catch |err| {
@@ -1353,7 +1390,7 @@ pub fn path_filestat_get(self: *WASI, dirfd: i32, flags: i32, path_ptr: i32, pat
 }
 
 /// Set file timestamps (path_filestat_set_times)
-pub fn path_filestat_set_times(self: *WASI, dirfd: i32, flags: i32, path_ptr: i32, path_len: i32, atim: i64, mtim: i64, fst_flags: i32) !i32 {
+pub fn path_filestat_set_times(self: *WASI, dirfd: i32, flags: i32, path_ptr: i32, path_len: i32, atim: i64, mtim: i64, fst_flags: i32, module: *Module) !i32 {
     _ = flags; // Flags for following symlinks
     const io = self.io;
 
@@ -1364,25 +1401,20 @@ pub fn path_filestat_set_times(self: *WASI, dirfd: i32, flags: i32, path_ptr: i3
     // Get the path from memory
     const path_bytes = blk: {
         if (path_len < 0 or path_ptr < 0) return 28; // EINVAL
-        const module_mem = self.module_memory orelse return 28;
+        const module_mem = module.memory orelse return 28;
         if (@as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len)) > module_mem.len) return 28;
         break :blk module_mem[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
     };
 
-    // Find base directory path for dirfd
-    var base_path: []const u8 = ".";
-    if (dirfd >= 3) {
-        for (self.preopens.items) |preopen| {
-            if (preopen.fd == dirfd) {
-                base_path = preopen.path;
-                break;
-            }
-        }
-    }
-
     // Build full path
     var full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-    const full_path = std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ base_path, path_bytes }) catch return 63; // ENAMETOOLONG
+    const full_path = self.resolveSafePath(dirfd, path_bytes, &full_path_buf) catch |err| {
+        return switch (err) {
+            error.AccessDenied => 2, // EACCES
+            error.NameTooLong => 63, // ENAMETOOLONG
+            else => 28, // EINVAL
+        };
+    };
 
     // On platforms that support it, use utimensat
     // For now, we'll use a simpler approach with updateTimes if available
@@ -1409,20 +1441,15 @@ pub fn path_remove_directory(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
 
-        // Find base directory path for dirfd
-        var base_path: []const u8 = ".";
-        if (dirfd >= 3) {
-            for (self.preopens.items) |preopen| {
-                if (preopen.fd == dirfd) {
-                    base_path = preopen.path;
-                    break;
-                }
-            }
-        }
-
         // Build full path
         var full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const full_path = std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ base_path, path }) catch return 63; // ENAMETOOLONG
+        const full_path = self.resolveSafePath(dirfd, path, &full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
 
         // Remove the directory
         std.Io.Dir.cwd().deleteDir(io, full_path) catch |err| {
@@ -1451,20 +1478,15 @@ pub fn path_unlink_file(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i32, m
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
 
-        // Find base directory path for dirfd
-        var base_path: []const u8 = ".";
-        if (dirfd >= 3) {
-            for (self.preopens.items) |preopen| {
-                if (preopen.fd == dirfd) {
-                    base_path = preopen.path;
-                    break;
-                }
-            }
-        }
-
         // Build full path
         var full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const full_path = std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ base_path, path }) catch return 63; // ENAMETOOLONG
+        const full_path = self.resolveSafePath(dirfd, path, &full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
 
         // Delete the file
         std.Io.Dir.cwd().deleteFile(io, full_path) catch |err| {
@@ -2210,20 +2232,15 @@ pub fn path_create_directory(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
 
-        // Find base directory path for dirfd
-        var base_path: []const u8 = ".";
-        if (dirfd >= 3) {
-            for (self.preopens.items) |preopen| {
-                if (preopen.fd == dirfd) {
-                    base_path = preopen.path;
-                    break;
-                }
-            }
-        }
-
         // Build full path
         var full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const full_path = std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ base_path, path }) catch return 63; // ENAMETOOLONG
+        const full_path = self.resolveSafePath(dirfd, path, &full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
 
         // Create the directory
         std.Io.Dir.cwd().createDirPath(self.io, full_path) catch |err| {
@@ -2257,20 +2274,11 @@ pub fn path_link(self: *WASI, old_fd: i32, old_flags: i32, old_path_ptr: i32, ol
         const old_path = memory[@intCast(old_path_ptr) .. @as(usize, @intCast(old_path_ptr)) + @as(usize, @intCast(old_path_len))];
         const new_path = memory[@intCast(new_path_ptr) .. @as(usize, @intCast(new_path_ptr)) + @as(usize, @intCast(new_path_len))];
 
-        // Find base directory paths
-        var old_base_path: []const u8 = ".";
-        var new_base_path: []const u8 = ".";
-
-        for (self.preopens.items) |preopen| {
-            if (preopen.fd == old_fd) old_base_path = preopen.path;
-            if (preopen.fd == new_fd) new_base_path = preopen.path;
-        }
-
         // Build full paths
         var old_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
         var new_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const old_full_path: [*:0]const u8 = std.fmt.bufPrintZ(&old_full_path_buf, "{s}/{s}", .{ old_base_path, old_path }) catch return 63;
-        const new_full_path: [*:0]const u8 = std.fmt.bufPrintZ(&new_full_path_buf, "{s}/{s}", .{ new_base_path, new_path }) catch return 63;
+        const old_full_path: [*:0]const u8 = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch return 63;
+        const new_full_path: [*:0]const u8 = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch return 63;
 
         // Create hard link
         _ = std.posix.system.link(old_full_path, new_full_path);
@@ -2294,20 +2302,15 @@ pub fn path_readlink(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i32, buf_
 
         const path = memory[@intCast(path_ptr) .. @as(usize, @intCast(path_ptr)) + @as(usize, @intCast(path_len))];
 
-        // Find base directory path for dirfd
-        var base_path: []const u8 = ".";
-        if (dirfd >= 3) {
-            for (self.preopens.items) |preopen| {
-                if (preopen.fd == dirfd) {
-                    base_path = preopen.path;
-                    break;
-                }
-            }
-        }
-
         // Build full path
         var full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const full_path = std.fmt.bufPrint(&full_path_buf, "{s}/{s}", .{ base_path, path }) catch return 63;
+        const full_path = self.resolveSafePath(dirfd, path, &full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
 
         // Read symlink
         const buffer = memory[@intCast(buf_ptr) .. @as(usize, @intCast(buf_ptr)) + @as(usize, @intCast(buf_len))];
@@ -2345,20 +2348,11 @@ pub fn path_rename(self: *WASI, old_fd: i32, old_path_ptr: i32, old_path_len: i3
         const old_path = memory[@intCast(old_path_ptr) .. @as(usize, @intCast(old_path_ptr)) + @as(usize, @intCast(old_path_len))];
         const new_path = memory[@intCast(new_path_ptr) .. @as(usize, @intCast(new_path_ptr)) + @as(usize, @intCast(new_path_len))];
 
-        // Find base directory paths
-        var old_base_path: []const u8 = ".";
-        var new_base_path: []const u8 = ".";
-
-        for (self.preopens.items) |preopen| {
-            if (preopen.fd == old_fd) old_base_path = preopen.path;
-            if (preopen.fd == new_fd) new_base_path = preopen.path;
-        }
-
         // Build full paths
         var old_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
         var new_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const old_full_path = std.fmt.bufPrint(&old_full_path_buf, "{s}/{s}", .{ old_base_path, old_path }) catch return 63;
-        const new_full_path = std.fmt.bufPrint(&new_full_path_buf, "{s}/{s}", .{ new_base_path, new_path }) catch return 63;
+        const old_full_path = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch return 63;
+        const new_full_path = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch return 63;
         const old_dir = std.Io.Dir.openDirAbsolute(self.io, old_full_path, .{}) catch {
             return 44; // ENOENT
         };
@@ -2398,20 +2392,15 @@ pub fn path_symlink(self: *WASI, old_path_ptr: i32, old_path_len: i32, dirfd: i3
         const old_path = memory[@intCast(old_path_ptr) .. @as(usize, @intCast(old_path_ptr)) + @as(usize, @intCast(old_path_len))];
         const new_path = memory[@intCast(new_path_ptr) .. @as(usize, @intCast(new_path_ptr)) + @as(usize, @intCast(new_path_len))];
 
-        // Find base directory path for dirfd
-        var base_path: []const u8 = ".";
-        if (dirfd >= 3) {
-            for (self.preopens.items) |preopen| {
-                if (preopen.fd == dirfd) {
-                    base_path = preopen.path;
-                    break;
-                }
-            }
-        }
-
         // Build new full path
         var new_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const new_full_path = std.fmt.bufPrint(&new_full_path_buf, "{s}/{s}", .{ base_path, new_path }) catch return 63;
+        const new_full_path = self.resolveSafePath(dirfd, new_path, &new_full_path_buf) catch |err| {
+            return switch (err) {
+                error.AccessDenied => 2, // EACCES
+                error.NameTooLong => 63, // ENAMETOOLONG
+                else => 28, // EINVAL
+            };
+        };
         // Create symbolic link
         std.Io.Dir.cwd().symLink(self.io, old_path, new_full_path, .{}) catch |err| {
             return switch (err) {
