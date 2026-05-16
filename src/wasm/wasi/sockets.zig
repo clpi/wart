@@ -271,7 +271,7 @@ fn addressToSockaddr(address: IpSocketAddress) !posix.sockaddr {
                     @as(u32, octets[1]) << 16 |
                     @as(u32, octets[2]) << 8 |
                     @as(u32, octets[3]),
-                .zero = [_]u8{0}**8,
+                .zero = [_]u8{0} ** 8,
             };
             break :blk posix.sockaddr{ .in = addr };
         },
