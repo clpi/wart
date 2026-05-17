@@ -691,6 +691,7 @@ pub fn createDefaultValue(allocator: std.mem.Allocator, component: *const Compon
             if (variant_type.cases.len == 0) return error.EmptyVariant;
             const first_case = variant_type.cases[0];
             const case_name = try allocator.dupe(u8, first_case.name);
+            errdefer allocator.free(case_name);
             var val: ?*ComponentValue = null;
             if (first_case.ty_idx) |idx| {
                 val = try allocator.create(ComponentValue);
