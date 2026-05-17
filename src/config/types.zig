@@ -132,7 +132,7 @@ test "Config.writeToml correctly formats output" {
     config.color = false;
     config.verbose = 3;
 
-    try config.writeToml(&writer);
+    try config.writeToml(fbs.writer());
 
     const expected =
         \\# wart global configuration
