@@ -679,9 +679,17 @@ pub fn createDefaultValue(allocator: std.mem.Allocator, component: *const Compon
         .string => return ComponentValue{ .string = try allocator.alloc(u8, 0) },
         .record => |record_type| {
             var map = std.StringHashMap(ComponentValue).init(allocator);
-            errdefer map.deinit();
+            errdefer {
+                var it = map.iterator();
+                while (it.next()) |entry| {
+                    allocator.free(entry.key_ptr.*);
+                    entry.value_ptr.deinit(allocator);
+                }
+                map.deinit();
+            }
             for (record_type.fields) |field| {
                 const key = try allocator.dupe(u8, field.name);
+                errdefer allocator.free(key);
                 const val = try createDefaultValue(allocator, component, field.ty_idx);
                 try map.put(key, val);
             }
