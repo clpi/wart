@@ -111,7 +111,8 @@ pub const Config = struct {
 
 test "Config.writeToml correctly formats output" {
     var buffer: [1024]u8 = undefined;
-    var writer = std.Io.Writer.fixed(&buffer);
+    var fbs = std.io.fixedBufferStream(&buffer);
+    var writer = fbs.writer();
 
     var threaded_io = std.Io.Threaded.init(std.testing.allocator, .{});
     defer threaded_io.deinit();
