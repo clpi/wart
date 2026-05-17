@@ -114,10 +114,14 @@ test "Config.writeToml correctly formats output" {
     var fbs = std.io.fixedBufferStream(&buffer);
     var writer = fbs.writer();
 
-    var threaded_io = std.Io.Threaded.init(std.testing.allocator, .{});
-    defer threaded_io.deinit();
+    // Create a basic Io instance for the config
+    const io = std.Io{
+        .in = std.io.getStdIn(),
+        .out = std.io.getStdOut(),
+        .err = std.io.getStdErr(),
+    };
 
-    var config = Config.init(threaded_io.io());
+    var config = Config.init(io);
     config.debug = true;
     config.validate = false;
     config.jit = true;
