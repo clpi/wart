@@ -646,7 +646,6 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
         }
         // Note: Normal components and "." don't affect depth
     }
-    }
 
     return std.fmt.bufPrintZ(out_buf, "{s}/{s}", .{ base_path, path }) catch error.NameTooLong;
 }

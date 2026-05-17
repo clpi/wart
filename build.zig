@@ -100,6 +100,7 @@ fn addStandaloneTest(
     }));
 
     const tests = b.addTest(.{ .root_module = root_module });
+    root_module.link_libc = true;
     return b.addRunArtifact(tests);
 }
 
