@@ -203,7 +203,7 @@ pub const WasiPreview2 = struct {
 
     const Stream = struct {
         kind: Kind,
-        fd: std.fs.File.Handle,
+        fd: std.posix.fd_t,
 
         const Kind = enum {
             input,
