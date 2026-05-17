@@ -147,7 +147,6 @@ test "Config.writeToml correctly formats output" {
         \\dump_objc = true
         \\color = false
         \\verbose = 3
-        \\
     ;
 
     const items = fbs.getWritten();
