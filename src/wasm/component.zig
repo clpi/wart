@@ -168,7 +168,7 @@ pub const CoreAlias = union(enum) {
 pub const ResourceTable = struct {
     const Self = @This();
 
-    io: std.fs.Dir,
+    io: std.Io,
     allocator: std.mem.Allocator,
     handles: std.ArrayList(u32), // WASI handles
     resource_types: std.ArrayList(ResourceType),
@@ -581,14 +581,14 @@ pub const ComponentInstance = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    io: std.fs.Dir,
+    io: std.Io,
     component: *const Component,
     exports: std.StringHashMap(ComponentValue),
     imports: std.StringHashMap(ComponentValue),
     resource_table: ResourceTable,
     nested_instances: std.ArrayList(*ComponentInstance),
 
-    pub fn init(allocator: std.mem.Allocator, io: std.fs.Dir, component: *const Component) !Self {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, component: *const Component) !Self {
         return Self{
             .allocator = allocator,
             .component = component,
@@ -642,7 +642,9 @@ pub const ComponentInstance = struct {
         // Initialize exports based on component definition
         for (self.component.exports.items) |export_item| {
             const key = try self.allocator.dupe(u8, export_item.name);
+            errdefer self.allocator.free(key);
             const val = try createDefaultValue(self.allocator, self.component, export_item.ty_idx);
+            errdefer val.deinit(self.allocator);
             try self.exports.put(key, val);
         }
     }
@@ -691,6 +693,7 @@ pub fn createDefaultValue(allocator: std.mem.Allocator, component: *const Compon
                 const key = try allocator.dupe(u8, field.name);
                 errdefer allocator.free(key);
                 const val = try createDefaultValue(allocator, component, field.ty_idx);
+                errdefer val.deinit(allocator);
                 try map.put(key, val);
             }
             return ComponentValue{ .record = map };
@@ -711,7 +714,10 @@ pub fn createDefaultValue(allocator: std.mem.Allocator, component: *const Compon
         .list => return ComponentValue{ .list = try allocator.alloc(ComponentValue, 0) },
         .tuple => return ComponentValue{ .tuple = try allocator.alloc(ComponentValue, 0) },
         .flags => return ComponentValue{ .flags = std.StringHashMap(bool).init(allocator) },
-        .@"enum" => return ComponentValue{ .@"enum" = try allocator.alloc(u8, 0) },
+        .@"enum" => |enum_names| {
+            if (enum_names.len == 0) return error.EmptyEnum;
+            return ComponentValue{ .@"enum" = try allocator.dupe(u8, enum_names[0..1]) };
+        },
         .@"union" => {
             const val = try allocator.create(ComponentValue);
             errdefer allocator.destroy(val);
@@ -720,14 +726,19 @@ pub fn createDefaultValue(allocator: std.mem.Allocator, component: *const Compon
         },
         .option => return ComponentValue{ .option = null },
         .result => |res| {
-            const val = try allocator.create(ComponentValue);
-            errdefer allocator.destroy(val);
             if (res.ok) |idx| {
+                const val = try allocator.create(ComponentValue);
+                errdefer allocator.destroy(val);
                 val.* = try createDefaultValue(allocator, component, idx);
-            } else {
-                val.* = ComponentValue{ .bool = false };
+                return ComponentValue{ .result = .{ .ok = val } };
             }
-            return ComponentValue{ .result = .{ .ok = val } };
+            if (res.err) |idx| {
+                const val = try allocator.create(ComponentValue);
+                errdefer allocator.destroy(val);
+                val.* = try createDefaultValue(allocator, component, idx);
+                return ComponentValue{ .result = .{ .err = val } };
+            }
+            return error.EmptyResult;
         },
         .own => return ComponentValue{ .own = 0 },
         .borrow => return ComponentValue{ .borrow = 0 },
@@ -2248,9 +2259,9 @@ pub const ComponentParser = struct {
 
     reader: Module.Reader,
     allocator: std.mem.Allocator,
-    io: std.fs.Dir,
+    io: std.Io,
 
-    pub fn init(allocator: std.mem.Allocator, io: std.fs.Dir, data: []const u8) Self {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, data: []const u8) Self {
         return Self{
             .reader = Module.Reader.init(data),
             .allocator = allocator,
@@ -2968,7 +2979,7 @@ pub const ComponentLinker = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    io: std.fs.Dir,
+    io: std.Io,
     loaded_components: std.StringHashMap(*ComponentInstance),
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io) Self {
@@ -3115,7 +3126,7 @@ pub const ESMLoader = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    io: std.fs.Dir,
+    io: std.Io,
     linker: ComponentLinker,
     module_registry: std.StringHashMap(*ComponentInstance),
     import_map: std.StringHashMap([]const u8),
@@ -3152,7 +3163,7 @@ pub const ESMLoader = struct {
 
         // Create component instance
         const instance = try self.allocator.create(ComponentInstance);
-        instance.* = try ComponentInstance.init(self.allocator, &component);
+        instance.* = try ComponentInstance.init(self.allocator, self.io, &component);
         errdefer self.allocator.destroy(instance);
 
         // Register in module registry
@@ -3172,7 +3183,9 @@ pub const ESMLoader = struct {
         // Initialize exports based on component definition
         for (component.exports.items) |export_item| {
             const key = try self.allocator.dupe(u8, export_item.name);
+            errdefer self.allocator.free(key);
             const val = try createDefaultValue(self.allocator, component, export_item.ty_idx);
+            errdefer val.deinit(self.allocator);
             try instance.exports.put(key, val);
         }
     }
@@ -3232,6 +3245,9 @@ pub const ESMLoader = struct {
 
 // Test function for component execution
 pub fn testComponentExecution(allocator: std.mem.Allocator) !void {
+    var threaded_io = std.Io.Threaded.init(allocator, .{});
+    defer threaded_io.deinit();
+
     // Create a minimal component with one function
     var component = try Component.init(allocator);
     defer component.deinit();
@@ -3260,7 +3276,7 @@ pub fn testComponentExecution(allocator: std.mem.Allocator) !void {
     try component.function_bodies.append(allocator, body);
 
     // Create instance
-    var instance = try ComponentInstance.init(allocator, &component);
+    var instance = try ComponentInstance.init(allocator, threaded_io.io(), &component);
     defer instance.deinit();
 
     // Create interpreter

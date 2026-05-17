@@ -27,7 +27,7 @@ pub const Config = struct {
     aot_output: ?[]const u8 = null,
     bench: bool = false,
     wast: bool = false,
-    io: std.fs.Dir,
+    io: std.Io,
     cfile_path: ?[:0]const u8 = null,
     cppfile_path: ?[:0]const u8 = null,
     function: ?[]const u8 = null,
@@ -37,7 +37,7 @@ pub const Config = struct {
     verbose: u8 = 0,
     generate_config: bool = false,
 
-    pub fn init(io: std.fs.Dir) Config {
+    pub fn init(io: std.Io) Config {
         return .{ .io = io };
     }
 

@@ -149,7 +149,7 @@ pub const CLI = struct {
             for (self.args.items) |argument| {
                 self.allocator.free(@constCast(argument));
             }
-            self.args.deinit();
+            self.args.deinit(self.allocator);
             for (self.env.items) |entry| {
                 self.allocator.free(@constCast(entry.key));
                 self.allocator.free(@constCast(entry.value));
