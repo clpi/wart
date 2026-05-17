@@ -146,6 +146,6 @@ test "Config.writeToml correctly formats output" {
         \\
     ;
 
-    const items = writer.buffered();
+    const items = fbs.getWritten();
     try std.testing.expectEqualStrings(expected, items);
 }
