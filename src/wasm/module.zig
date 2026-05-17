@@ -61,7 +61,7 @@ pub const Section = enum(u8) {
 
 allocator: Allocator,
 functions: Array(*Function),
-io: std.Io,
+io: std.fs.Dir,
 types: Array(Signature),
 gc_types: Array(GCType),
 // Back-compat: primary memory alias
@@ -157,7 +157,7 @@ fn readHeapValueType(reader: *Reader, module: *Module) !ValueType {
     };
 }
 
-pub fn parse(allocator: Allocator, io: std.Io, bytes: []const u8) !*Module {
+pub fn parse(allocator: Allocator, io: std.fs.Dir, bytes: []const u8) !*Module {
     var reader = Reader.init(bytes);
 
     // Check magic number and version

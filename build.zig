@@ -201,7 +201,6 @@ pub fn libopts(b: *std.Build, t: std.Build.ResolvedTarget, optimize: std.builtin
 // declaratively construct a build graph that will be executed by an external
 // runner.
 pub fn build(b: *std.Build) void {
-    b.cache_root = .{ .path = ".zig-cache", .handle = std.fs.cwd() };
 
     // Enable parallel compilation and native CPU optimizations for maximum performance
     const target = b.standardTargetOptions(.{});

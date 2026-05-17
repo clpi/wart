@@ -44,5 +44,3 @@ COPY . .
 
 # Enter development shell by default
 CMD ["nix", "develop"]
-
-FROM runtime
