@@ -2962,7 +2962,7 @@ pub const ComponentLinker = struct {
     io: std.fs.Dir,
     loaded_components: std.StringHashMap(*ComponentInstance),
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io) Self {
+    pub fn init(allocator: std.mem.Allocator, io: std.fs.Dir) Self {
         return Self{
             .allocator = allocator,
             .io = io,
