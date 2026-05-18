@@ -108,3 +108,43 @@ pub const Config = struct {
         return if (value) "true" else "false";
     }
 };
+
+test "Config.writeToml correctly formats output" {
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+
+    var threaded_io = std.Io.Threaded.init(std.testing.allocator, .{});
+    defer threaded_io.deinit();
+
+    var config = Config.init(threaded_io.io());
+    config.debug = true;
+    config.validate = false;
+    config.jit = true;
+    config.aot = false;
+    config.bench = true;
+    config.wast = false;
+    config.dump_objc = true;
+    config.color = false;
+    config.verbose = 3;
+
+    try config.writeToml(&writer);
+
+    const expected =
+        \\# wart global configuration
+        \\# CLI flags override these values at runtime.
+        \\
+        \\debug = true
+        \\validate = false
+        \\jit = true
+        \\aot = false
+        \\bench = true
+        \\wast = false
+        \\dump_objc = true
+        \\color = false
+        \\verbose = 3
+        \\
+    ;
+
+    const items = writer.buffered();
+    try std.testing.expectEqualStrings(expected, items);
+}

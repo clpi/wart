@@ -178,7 +178,7 @@ pub fn executeSIMD(
             if (memory) |mem| {
                 if (addr + 1 > mem.len) return Error.InvalidAccess;
                 const val = mem[addr];
-                try stack.append(allocator, .{ .v128 = [_]u8{val} ** 16 });
+                try stack.append(allocator, .{ .v128 = [_]u8{val}**16 });
             } else {
                 return Error.InvalidAccess;
             }
