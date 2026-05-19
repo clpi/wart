@@ -185,9 +185,49 @@ fn stripOptionalQuotes(value: []const u8) []const u8 {
 }
 
 fn getEnvVarOwnedOrNull(allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
-    const name_z = try allocator.dupe(u8, name);
+    const name_z = try allocator.allocSentinel(u8, name.len, 0);
+    @memcpy(name_z, name);
     defer allocator.free(name_z);
 
-    const value = std.posix.getenv(name_z.ptr) orelse return null;
+    const value = std.c.getenv(name_z.ptr) orelse return null;
     return try allocator.dupe(u8, std.mem.span(value));
+}
+
+extern "c" fn unsetenv(name: [*:0]const u8) c_int;
+extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+
+test "defaultConfigDir falls back to .wart if HOME is not set" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+    const allocator = std.testing.allocator;
+    const old_home = std.c.getenv("HOME");
+
+    defer if (old_home) |h| {
+        _ = setenv("HOME", h, 1);
+    } else {
+        _ = unsetenv("HOME");
+    };
+
+    _ = unsetenv("HOME");
+
+    const dir = try defaultConfigDir(allocator);
+    defer allocator.free(dir);
+    try std.testing.expectEqualStrings(".wart", dir);
+}
+
+test "defaultConfigDir uses HOME when set" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+    const allocator = std.testing.allocator;
+    const old_home = std.c.getenv("HOME");
+
+    defer if (old_home) |h| {
+        _ = setenv("HOME", h, 1);
+    } else {
+        _ = unsetenv("HOME");
+    };
+
+    _ = setenv("HOME", "/custom/home/path", 1);
+
+    const dir = try defaultConfigDir(allocator);
+    defer allocator.free(dir);
+    try std.testing.expectEqualStrings("/custom/home/path/.config/wart", dir);
 }

@@ -33,21 +33,21 @@ pub const WasiPreview2 = struct {
         // Stdin (handle 0)
         try wasi.streams.append(allocator, Stream{
             .kind = .input,
-            .fd = 0, // stdin file descriptor
+            .fd = std.posix.STDIN_FILENO,
         });
         wasi.stdin_handle = 0;
 
         // Stdout (handle 1)
         try wasi.streams.append(allocator, Stream{
             .kind = .output,
-            .fd = 1, // stdout file descriptor
+            .fd = std.posix.STDOUT_FILENO,
         });
         wasi.stdout_handle = 1;
 
         // Stderr (handle 2)
         try wasi.streams.append(allocator, Stream{
             .kind = .output,
-            .fd = 2, // stderr file descriptor
+            .fd = std.posix.STDERR_FILENO,
         });
         wasi.stderr_handle = 2;
 
@@ -203,7 +203,7 @@ pub const WasiPreview2 = struct {
 
     const Stream = struct {
         kind: Kind,
-        fd: std.Io.File.Handle,
+        fd: std.posix.fd_t,
 
         const Kind = enum {
             input,

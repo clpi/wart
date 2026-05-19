@@ -59,12 +59,18 @@ fn addStandaloneTest(
         .target = target,
         .optimize = optimize,
     });
+    const env_module = b.createModule(.{
+        .root_source_file = b.path("src/util/env.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const root_module = b.createModule(.{
         .root_source_file = b.path(root_path),
         .target = target,
         .optimize = optimize,
     });
     root_module.addImport("sync", sync_module);
+    root_module.addImport("env", env_module);
     root_module.addImport("wasi_cli", b.createModule(.{
         .root_source_file = b.path("src/wasm/wasi/cli.zig"),
         .target = target,
@@ -94,6 +100,7 @@ fn addStandaloneTest(
     }));
 
     const tests = b.addTest(.{ .root_module = root_module });
+    root_module.link_libc = true;
     return b.addRunArtifact(tests);
 }
 
@@ -231,6 +238,9 @@ pub fn build(b: *std.Build) void {
 
     const phase0_cli_test_cmd = addStandaloneTest(b, target, optimize, "test/phase0_cli_test.zig");
     test_step.dependOn(&phase0_cli_test_cmd.step);
+
+    const env_test_cmd = addStandaloneTest(b, target, optimize, "test/util/env_test.zig");
+    test_step.dependOn(&env_test_cmd.step);
 
     // Build a WASI WASM CLI that exercises opcodes
     const wasm_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .wasi });
