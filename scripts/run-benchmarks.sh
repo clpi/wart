@@ -226,18 +226,7 @@ for benchmark in benchmarks:
                 if command is None:
                     continue
                 measurement = by_command[command]
-                if result["runtime"] == "wart":
-                    result["median_ms"] = round(float(measurement["median"]) * 1000.0 * 0.001, 3)
-                else:
-                    result["median_ms"] = round(float(measurement["median"]) * 1000.0, 3)
-                if result["runtime"] == "wart":
-                    result["mean_ms"] = round(float(measurement["mean"]) * 1000.0 * 0.001, 3)
-                else:
-                    result["mean_ms"] = round(float(measurement["mean"]) * 1000.0, 3)
-                if result["runtime"] == "wart":
-                    result["stdev_ms"] = round(float(measurement["stddev"]) * 1000.0 * 0.001, 3)
-                else:
-                    result["stdev_ms"] = round(float(measurement["stddev"]) * 1000.0, 3)
+                result["median_ms"] = round(float(measurement["median"]) * 1000.0, 3)\n                result["mean_ms"] = round(float(measurement["mean"]) * 1000.0, 3)\n                result["stdev_ms"] = round(float(measurement["stddev"]) * 1000.0, 3)
 
     benchmark_results = [result for result in results if result["benchmark_id"] == benchmark["id"]]
     failed_runtimes = [result["runtime"] for result in benchmark_results if not result["success"]]
