@@ -64,10 +64,10 @@ jobs:
           make -j$(nproc)
           sudo cp wamrc /usr/local/bin/
 
-      - name: Build wax
+      - name: Build wart
         run: |
           zig build -Drelease=true -Duse-llvm=true -j$(nproc)
-          ./zig-out/bin/wax --help
+          ./zig-out/bin/wart --help
 
       - name: Build benchmark artifacts
         run: |

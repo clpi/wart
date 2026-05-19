@@ -2992,7 +2992,7 @@ inline fn zeroValueForType(t: ValueType) Value {
         .i64 => .{ .i64 = 0 },
         .f32 => .{ .f32 = 0.0 },
         .f64 => .{ .f64 = 0.0 },
-        .v128 => .{ .v128 = [_]u8{0}**16 },
+        .v128 => .{ .v128 = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
         .funcref => .{ .funcref = null },
         .externref => .{ .externref = null },
         .anyref => .{ .anyref = value.GCRef.null_ref() },
@@ -3825,7 +3825,7 @@ inline fn readLittle(self: *Runtime, comptime T: type, addr: usize) !T {
         }
     }
     // Read the available bytes and pad with zeros
-    var buffer: [@sizeOf(T)]u8 = [_]u8{0}**@sizeOf(T);
+    var buffer: [@sizeOf(T)]u8 = undefined; @memset(&buffer, 0);
     const available = m.len - addr;
     @memcpy(buffer[0..available], m[addr..m.len]);
     return std.mem.readInt(T, &buffer, .little);
@@ -4692,7 +4692,7 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
             .i64 => .{ .i64 = 0 },
             .f32 => .{ .f32 = 0.0 },
             .f64 => .{ .f64 = 0.0 },
-            .v128 => .{ .v128 = [_]u8{0}**16 },
+            .v128 => .{ .v128 = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
             .funcref => .{ .funcref = null },
             .externref => .{ .externref = null },
             .anyref => .{ .anyref = value.GCRef.null_ref() },
