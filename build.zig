@@ -100,7 +100,6 @@ fn addStandaloneTest(
     }));
 
     const tests = b.addTest(.{ .root_module = root_module });
-    root_module.link_libc = true;
     return b.addRunArtifact(tests);
 }
 
@@ -112,7 +111,7 @@ pub fn exeopts(
     use_lld: bool,
 ) *std.Build.Step.Compile {
     const root_module = b.createModule(.{
-        .sanitize_c = false,
+        .sanitize_c = .off,
         .valgrind = false,
         .root_source_file = b.path("src/main.zig"),
         .error_tracing = false,
@@ -165,8 +164,8 @@ pub fn libopts(b: *std.Build, t: std.Build.ResolvedTarget, optimize: std.builtin
     const root_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .no_builtin = true,
-        .unwind_tables = .none,
-        .sanitize_c = false,
+        .unwind_tables = .async,
+        .sanitize_c = .off,
         .single_threaded = true,
         .stack_protector = false,
         .omit_frame_pointer = true,
@@ -208,7 +207,7 @@ pub fn libopts(b: *std.Build, t: std.Build.ResolvedTarget, optimize: std.builtin
 // declaratively construct a build graph that will be executed by an external
 // runner.
 pub fn build(b: *std.Build) void {
-    b.cache_root = .{ .path = ".zig-cache", .handle = std.fs.cwd() };
+    b.cache_root = .{ .path = ".zig-cache", .handle = std.Io.Dir.cwd() };
 
     // Enable parallel compilation and native CPU optimizations for maximum performance
     const target = b.standardTargetOptions(.{});

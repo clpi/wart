@@ -33,21 +33,21 @@ pub const WasiPreview2 = struct {
         // Stdin (handle 0)
         try wasi.streams.append(allocator, Stream{
             .kind = .input,
-            .fd = std.posix.STDIN_FILENO,
+            .fd = std.io.getStdIn().handle,
         });
         wasi.stdin_handle = 0;
 
         // Stdout (handle 1)
         try wasi.streams.append(allocator, Stream{
             .kind = .output,
-            .fd = std.posix.STDOUT_FILENO,
+            .fd = std.io.getStdOut().handle,
         });
         wasi.stdout_handle = 1;
 
         // Stderr (handle 2)
         try wasi.streams.append(allocator, Stream{
             .kind = .output,
-            .fd = std.posix.STDERR_FILENO,
+            .fd = std.io.getStdErr().handle,
         });
         wasi.stderr_handle = 2;
 
@@ -203,7 +203,7 @@ pub const WasiPreview2 = struct {
 
     const Stream = struct {
         kind: Kind,
-        fd: std.posix.fd_t,
+        fd: std.fs.File.Handle,
 
         const Kind = enum {
             input,

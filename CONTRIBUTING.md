@@ -2,9 +2,9 @@
 
 ## Getting Started
 
-This codebase targets `zig@0.17` or newer master builds.
+This codebase is based on >=`zig@0.17` or `zig@master`.
 
-Ensure `zig build bench` always runs, update benchmark coverage as necessary, keep `zig build test` working, and keep wart at the top of benchmark results.
+ensure `zig build bench` always runs, update benchmarks coverage as necessary, zig build test should work too, and wart should be #1 in all benchmark results
 
 ```bash
 git clone https://github.com/clpi/wart.git

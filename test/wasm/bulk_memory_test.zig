@@ -338,7 +338,7 @@ test "memory operations - large copy" {
     defer testing.allocator.free(memory);
 
     // Fill source region
-    @memset(memory[0 .. 512 * 1024], 0x42);
+    @memset(memory[0..512 * 1024], 0x42);
 
     // Copy large region
     try MemoryOps.copy(memory, 512 * 1024, 0, 512 * 1024);
