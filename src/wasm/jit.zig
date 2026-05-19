@@ -454,8 +454,26 @@ pub fn init(allocator: Allocator, execute_function_callback: *const fn (*anyopaq
     // Allocate executable memory (64MB for high performance)
     const code_size = 64 * 1024 * 1024;
 
-    // Allocate executable memory
-    const code_memory = try allocator.alloc(u8, code_size);
+    // Allocate executable memory. JIT-compiled code is written into this buffer
+    // and then invoked as a function pointer, so the pages must be marked
+    // executable. On POSIX platforms with NX/W^X enforcement, plain heap memory
+    // would segfault on the first call into a compiled function. Fall back to
+    // the regular allocator if mmap is unavailable (e.g. non-POSIX targets) —
+    // execution will then only be safe on platforms without NX enforcement.
+    const code_memory = blk: {
+        if (@hasDecl(std.posix, "mmap")) {
+            const mapped = std.posix.mmap(
+                null,
+                code_size,
+                std.posix.PROT.READ | std.posix.PROT.WRITE | std.posix.PROT.EXEC,
+                .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
+                -1,
+                0,
+            ) catch break :blk try allocator.alloc(u8, code_size);
+            break :blk mapped;
+        }
+        break :blk try allocator.alloc(u8, code_size);
+    };
 
     return Self{
         .allocator = allocator,
