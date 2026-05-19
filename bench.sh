@@ -165,7 +165,7 @@ run_fallback_timer() {
   echo "Benchmarking ${wasm} (fallback timer, ${RUNS} runs)"
   for name in wart wasmtime wasmer wasmedge wazero wasm3; do
     runtime_available "${name}" || continue
-    time bash -c "for _ in \$(seq 1 ${RUNS}); do $(runtime_command "${name}" "${wasm}") >/dev/null 2>&1 || true; done"
+    time bash -c "for _ in \$(seq 1 ${RUNS}); do $(runtime_command "${name}" "${wasm}") >/dev/null; done"
   done
 }
 
