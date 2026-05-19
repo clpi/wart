@@ -314,7 +314,8 @@ pub const AsyncABI = struct {
             remaining = timeout_ns - elapsed;
 
             // Poll with reduced timeout
-            std.Thread.yield() catch {};
+            const poll_time = @min(remaining, self.poll_timeout_ns);
+            std.time.sleep(@as(u64, @intCast(poll_time)));
 
         }
     }
