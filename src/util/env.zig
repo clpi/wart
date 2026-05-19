@@ -1,10 +1,10 @@
 const std = @import("std");
 
 pub fn hasEnvVarConstant(comptime name: []const u8) bool {
-    const name_z = std.heap.c_allocator.allocSentinel(u8, name.len, 0) catch return false;
+    const name_z = std.heap.page_allocator.allocSentinel(u8, name.len, 0) catch return false;
     @memcpy(name_z, name);
-    defer std.heap.c_allocator.free(name_z);
-    return std.posix.getenv(name_z.ptr) != null;
+    defer std.heap.page_allocator.free(name_z);
+    return std.c.getenv(name_z.ptr) != null;
 }
 
 pub fn getEnvVarOwned(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
