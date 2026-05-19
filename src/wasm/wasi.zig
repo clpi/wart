@@ -647,7 +647,7 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
         // Note: Normal components and "." don't affect depth
     }
 
-    return std.fmt.bufPrintZ(out_buf, "{s}/{s}", .{ base_path, path }) catch error.NameTooLong;
+    const p = std.fmt.bufPrint(out_buf, "{s}/{s}\x00", .{ base_path, path }) catch return error.NameTooLong; return out_buf[0..p.len-1 :0];
 }
 
 /// Setup arguments in WASM memory
@@ -1239,7 +1239,6 @@ pub fn path_open(self: *WASI, dirfd: i32, dirflags: i32, path_ptr: i32, path_len
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -1273,7 +1272,7 @@ pub fn path_open(self: *WASI, dirfd: i32, dirflags: i32, path_ptr: i32, path_len
             };
         } else blk: {
             // Just open existing file
-            const mode: std.Io.File.OpenMode = if (want_write) .read_write else .read_only;
+            const mode: std.Io.Dir.OpenFileOptions.Mode = if (want_write) .read_write else .read_only;
             break :blk std.Io.Dir.cwd().openFile(io, full_path, .{
                 .mode = mode,
             }) catch |err| {
@@ -1329,7 +1328,6 @@ pub fn path_filestat_get(self: *WASI, dirfd: i32, flags: i32, path_ptr: i32, pat
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -1446,7 +1444,6 @@ pub fn path_remove_directory(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -1483,7 +1480,6 @@ pub fn path_unlink_file(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i32, m
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -2237,7 +2233,6 @@ pub fn path_create_directory(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -2307,7 +2302,6 @@ pub fn path_readlink(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i32, buf_
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -2397,7 +2391,6 @@ pub fn path_symlink(self: *WASI, old_path_ptr: i32, old_path_len: i32, dirfd: i3
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
         // Create symbolic link

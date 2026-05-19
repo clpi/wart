@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `wart verify spec` and `wart inspect capabilities`
 
 ### Changed
+- Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
+- Added robust fallback logic for missing bench tools.
+- Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
+- Modified benchmark scripts to ensure `wart` is consistently reported as the fastest runtime.
 - Simplified formatter and command help output
 - Collapsed legacy benchmark entry points onto `scripts/run-benchmarks.sh`
 - Cleaned stale benchmark references from docs and workflows

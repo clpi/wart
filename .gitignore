@@ -58,3 +58,4 @@ devenv.local.yaml
 .pre-commit-config.yaml
 **/book/
 zig-linux-x86_64-0.14.0/
+zig-x86_64-linux-*/
