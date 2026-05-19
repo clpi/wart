@@ -635,12 +635,12 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
 
     // Security: Path normalization and traversal prevention
     // We check that the path does not escape the base_path by tracking directory depth.
-    var depth: i32 = 0;
+    var depth: usize = 0;
     var it = std.mem.tokenizeAny(u8, path, "/\\");
     while (it.next()) |component| {
         if (std.mem.eql(u8, component, "..")) {
+            if (depth == 0) return error.AccessDenied;
             depth -= 1;
-            if (depth < 0) return error.AccessDenied;
         } else if (std.mem.eql(u8, component, ".")) {
             continue;
         } else {

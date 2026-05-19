@@ -111,7 +111,8 @@ pub const Config = struct {
 
 test "Config.writeToml correctly formats output" {
     var buffer: [1024]u8 = undefined;
-    var writer = std.Io.Writer.fixed(&buffer);
+    var stream = std.io.fixedBufferStream(&buffer);
+    const writer = stream.writer();
 
     var threaded_io = std.Io.Threaded.init(std.testing.allocator, .{});
     defer threaded_io.deinit();
@@ -127,7 +128,7 @@ test "Config.writeToml correctly formats output" {
     config.color = false;
     config.verbose = 3;
 
-    try config.writeToml(&writer);
+    try config.writeToml(writer);
 
     const expected =
         \\# wart global configuration
@@ -145,6 +146,6 @@ test "Config.writeToml correctly formats output" {
         \\
     ;
 
-    const items = writer.buffered();
+    const items = stream.getWritten();
     try std.testing.expectEqualStrings(expected, items);
 }

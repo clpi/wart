@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Config = @import("types.zig").Config;
+extern "c" fn unsetenv(name: [*:0]const u8) c_int;
+extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
 pub const config_filename = "config.toml";
 const max_config_file_bytes: usize = 1024 * 1024;
@@ -192,9 +194,6 @@ fn getEnvVarOwnedOrNull(allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
     const value = std.c.getenv(name_z.ptr) orelse return null;
     return try allocator.dupe(u8, std.mem.span(value));
 }
-
-extern "c" fn unsetenv(name: [*:0]const u8) c_int;
-extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
 test "defaultConfigDir falls back to .wart if HOME is not set" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
