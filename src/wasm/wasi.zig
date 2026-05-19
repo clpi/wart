@@ -651,6 +651,14 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
     return std.fmt.bufPrintZ(out_buf, "{s}/{s}", .{ base_path, path }) catch error.NameTooLong;
 }
 
+fn mapResolveSafePathError(err: anyerror) i32 {
+    return switch (err) {
+        error.AccessDenied => 2, // EACCES
+        error.NameTooLong => 63, // ENAMETOOLONG
+        else => 28, // EINVAL
+    };
+}
+
 /// Setup arguments in WASM memory
 pub fn setupArgs(self: *WASI, module: *Module) !struct { argc: i32, argv_ptr: i32 } {
     if (module.memory == null) {
@@ -2277,8 +2285,8 @@ pub fn path_link(self: *WASI, old_fd: i32, old_flags: i32, old_path_ptr: i32, ol
         // Build full paths
         var old_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
         var new_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const old_full_path: [*:0]const u8 = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch return 63;
-        const new_full_path: [*:0]const u8 = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch return 63;
+        const old_full_path: [*:0]const u8 = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch |err| return mapResolveSafePathError(err);
+        const new_full_path: [*:0]const u8 = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch |err| return mapResolveSafePathError(err);
 
         // Create hard link
         _ = std.posix.system.link(old_full_path, new_full_path);
@@ -2351,8 +2359,8 @@ pub fn path_rename(self: *WASI, old_fd: i32, old_path_ptr: i32, old_path_len: i3
         // Build full paths
         var old_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
         var new_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const old_full_path = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch return 63;
-        const new_full_path = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch return 63;
+        const old_full_path = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch |err| return mapResolveSafePathError(err);
+        const new_full_path = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch |err| return mapResolveSafePathError(err);
         const old_dir = std.Io.Dir.openDirAbsolute(self.io, old_full_path, .{}) catch {
             return 44; // ENOENT
         };
