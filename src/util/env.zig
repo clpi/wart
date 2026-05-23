@@ -15,3 +15,9 @@ pub fn getEnvVarOwned(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
     const value = std.c.getenv(name_z.ptr) orelse return error.EnvironmentVariableNotFound;
     return try allocator.dupe(u8, std.mem.span(value));
 }
+
+test "getEnvVarOwned returns error.EnvironmentVariableNotFound for nonexistent var" {
+    const testing = std.testing;
+    const result = getEnvVarOwned(testing.allocator, "NONEXISTENT_VAR_FOR_TESTING");
+    try testing.expectError(error.EnvironmentVariableNotFound, result);
+}
