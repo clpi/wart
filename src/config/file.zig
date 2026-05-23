@@ -191,7 +191,7 @@ fn getEnvVarOwnedOrNull(allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
     @memcpy(name_z, name);
     defer allocator.free(name_z);
 
-    const value = std.c.getenv(name_z.ptr) orelse return null;
+    const value = std.posix.getenv(name_z.ptr) orelse return null;
     return try allocator.dupe(u8, std.mem.span(value));
 }
 
