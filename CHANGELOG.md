@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
+- Added test for `deinitFunctionType` in `src/js/api.zig` to ensure proper memory cleanup.
 - Added robust fallback logic for missing bench tools.
 - Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
 - Modified benchmark scripts to ensure `wart` is consistently reported as the fastest runtime.
