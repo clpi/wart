@@ -635,18 +635,28 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
 
     // Security: Path normalization and traversal prevention
     // We check that the path does not escape the base_path by tracking directory depth.
-    var depth: i32 = 0;
+    var depth: usize = 0;
     var it = std.mem.tokenizeAny(u8, path, "/\\");
     while (it.next()) |component| {
         if (std.mem.eql(u8, component, "..")) {
+            if (depth == 0) return error.AccessDenied;
             depth -= 1;
-            if (depth < 0) return error.AccessDenied;
-        } else if (!std.mem.eql(u8, component, ".")) {
+        } else if (std.mem.eql(u8, component, ".")) {
+            continue;
+        } else {
             depth += 1;
         }
     }
 
-    return std.fmt.bufPrintZ(out_buf, "{s}/{s}", .{ base_path, path }) catch error.NameTooLong;
+    const p = std.fmt.bufPrint(out_buf, "{s}/{s}\x00", .{ base_path, path }) catch return error.NameTooLong; return out_buf[0..p.len-1 :0];
+}
+
+fn mapResolveSafePathError(err: anyerror) i32 {
+    return switch (err) {
+        error.AccessDenied => 2, // EACCES
+        error.NameTooLong => 63, // ENAMETOOLONG
+        else => 28, // EINVAL
+    };
 }
 
 /// Setup arguments in WASM memory
@@ -1238,7 +1248,6 @@ pub fn path_open(self: *WASI, dirfd: i32, dirflags: i32, path_ptr: i32, path_len
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -1272,7 +1281,7 @@ pub fn path_open(self: *WASI, dirfd: i32, dirflags: i32, path_ptr: i32, path_len
             };
         } else blk: {
             // Just open existing file
-            const mode: std.Io.File.OpenMode = if (want_write) .read_write else .read_only;
+            const mode: std.Io.Dir.OpenFileOptions.Mode = if (want_write) .read_write else .read_only;
             break :blk std.Io.Dir.cwd().openFile(io, full_path, .{
                 .mode = mode,
             }) catch |err| {
@@ -1328,7 +1337,6 @@ pub fn path_filestat_get(self: *WASI, dirfd: i32, flags: i32, path_ptr: i32, pat
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -1445,7 +1453,6 @@ pub fn path_remove_directory(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -1482,7 +1489,6 @@ pub fn path_unlink_file(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i32, m
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -2236,7 +2242,6 @@ pub fn path_create_directory(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -2275,8 +2280,8 @@ pub fn path_link(self: *WASI, old_fd: i32, old_flags: i32, old_path_ptr: i32, ol
         // Build full paths
         var old_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
         var new_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const old_full_path: [*:0]const u8 = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch return 63;
-        const new_full_path: [*:0]const u8 = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch return 63;
+        const old_full_path: [*:0]const u8 = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch |err| return mapResolveSafePathError(err);
+        const new_full_path: [*:0]const u8 = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch |err| return mapResolveSafePathError(err);
 
         // Create hard link
         _ = std.posix.system.link(old_full_path, new_full_path);
@@ -2306,7 +2311,6 @@ pub fn path_readlink(self: *WASI, dirfd: i32, path_ptr: i32, path_len: i32, buf_
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
 
@@ -2349,8 +2353,8 @@ pub fn path_rename(self: *WASI, old_fd: i32, old_path_ptr: i32, old_path_len: i3
         // Build full paths
         var old_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
         var new_full_path_buf: [std.posix.PATH_MAX]u8 = undefined;
-        const old_full_path = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch return 63;
-        const new_full_path = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch return 63;
+        const old_full_path = self.resolveSafePath(old_fd, old_path, &old_full_path_buf) catch |err| return mapResolveSafePathError(err);
+        const new_full_path = self.resolveSafePath(new_fd, new_path, &new_full_path_buf) catch |err| return mapResolveSafePathError(err);
         const old_dir = std.Io.Dir.openDirAbsolute(self.io, old_full_path, .{}) catch {
             return 44; // ENOENT
         };
@@ -2396,7 +2400,6 @@ pub fn path_symlink(self: *WASI, old_path_ptr: i32, old_path_len: i32, dirfd: i3
             return switch (err) {
                 error.AccessDenied => 2, // EACCES
                 error.NameTooLong => 63, // ENAMETOOLONG
-                else => 28, // EINVAL
             };
         };
         // Create symbolic link

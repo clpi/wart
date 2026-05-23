@@ -44,3 +44,6 @@ COPY . .
 
 # Enter development shell by default
 CMD ["nix", "develop"]
+
+# Default final stage matches the runtime image used by Docker workflow tests.
+FROM runtime
