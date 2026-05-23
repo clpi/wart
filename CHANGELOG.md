@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added error test for `getEnvVarOwned` in `src/util/env.zig`.
 - Pinned benchmark profiles under `bench/profiles/`
 - Machine-readable benchmark and verification artifact output
 - `wart verify spec` and `wart inspect capabilities`
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.0-alpha] - 2025-01-XX
 
 ### Added
+- Added error test for `getEnvVarOwned` in `src/util/env.zig`.
 - Initial WebAssembly runtime written in Zig
 - Basic WASI support
 - WASI CLI workload `opcodes_cli.wasm` that exercises core WASM operations
