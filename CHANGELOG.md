@@ -49,3 +49,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/clpi/wart/compare/v0.0.0-alpha...HEAD
 [0.0.0-alpha]: https://github.com/clpi/wart/releases/tag/v0.0.0-alpha
+
+### Fixed
+- Cleaned up dead code by removing the commented out `parseDataSection` function from `src/wasm/module.zig`.
