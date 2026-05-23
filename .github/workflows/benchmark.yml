@@ -29,7 +29,14 @@ jobs:
       - name: Install Benchmark Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y wabt hyperfine wasm3
+          sudo apt-get install -y wabt hyperfine
+          mkdir -p /tmp/wasm3
+          cd /tmp/wasm3
+          wget https://github.com/wasm3/wasm3/releases/download/v0.5.0/wasm3-ubuntu-20.04-x86_64.tar.gz
+          tar -xzf wasm3-ubuntu-20.04-x86_64.tar.gz
+          sudo cp wasm3 /usr/local/bin/
+          cd -
+          rm -rf /tmp/wasm3
           wat2wasm --version
           hyperfine --version
           wasm3 --version
