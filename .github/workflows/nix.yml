@@ -44,13 +44,13 @@ jobs:
       - name: Check flake
         run: nix flake check
 
-      - name: Build wax
+      - name: Build wart
         run: nix build
 
-      - name: Test wax binary
+      - name: Test wart binary
         run: |
-          ./result/bin/wax --help
-          ./result/bin/wax --version || echo "Version flag not supported"
+          ./result/bin/wart --help
+          ./result/bin/wart --version || echo "Version flag not supported"
 
       - name: Enter dev shell
         run: |

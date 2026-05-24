@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added error test for `getEnvVarOwned` in `src/util/env.zig`.
+- Added GitHub action for Homebrew releases (`.github/workflows/release.yml`) which automatically publishes release artifacts and bumps the homebrew formula.
+
+### Fixed
+- Fixed binary references in existing Docker, Nix and Spec Tests workflows to use `wart` instead of `wax`.
 
 ### Fixed
 - Replaced `std.posix.getenv` with `std.c.getenv` in `src/config/file.zig` and `src/util/env.zig` to resolve compilation errors with `zig@master`.

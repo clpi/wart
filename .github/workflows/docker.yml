@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: wax
+  IMAGE_NAME: wart
   GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
 jobs:
@@ -88,8 +88,8 @@ jobs:
 
       - name: Test Docker image
         run: |
-          docker build -t wax-test .
-          echo "Testing wax --help..."
-          docker run --rm wax-test --help
-          echo "Testing wax --version..."
-          docker run --rm wax-test --version || echo "Version flag not supported"
+          docker build -t wart-test .
+          echo "Testing wart --help..."
+          docker run --rm wart-test --help
+          echo "Testing wart --version..."
+          docker run --rm wart-test --version || echo "Version flag not supported"
