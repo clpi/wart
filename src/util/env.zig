@@ -12,7 +12,7 @@ pub fn getEnvVarOwned(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
     @memcpy(name_z, name);
     defer allocator.free(name_z);
 
-    const value = std.posix.getenv(name_z.ptr) orelse return error.EnvironmentVariableNotFound;
+    const value = std.c.getenv(name_z.ptr) orelse return error.EnvironmentVariableNotFound;
     return try allocator.dupe(u8, std.mem.span(value));
 }
 
