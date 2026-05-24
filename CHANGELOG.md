@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added error test for `getEnvVarOwned` in `src/util/env.zig`.
+
+### Fixed
+- Replaced `std.posix.getenv` with `std.c.getenv` in `src/config/file.zig` and `src/util/env.zig` to resolve compilation errors with `zig@master`.
+- Removed unrequested AI-generated Markdown files across the codebase to keep the repository clean.
 - Pinned benchmark profiles under `bench/profiles/`
 - Machine-readable benchmark and verification artifact output
 - `wart verify spec` and `wart inspect capabilities`

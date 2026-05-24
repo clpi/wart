@@ -60,6 +60,17 @@ jobs:
       - name: Run tests
         run: zig build test
 
+      - name: Run benchmarks
+        run: zig build bench
+
+      - name: Upload bench artifacts
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: ./bench/results/
+          if-no-files-found: warn
+
       - name: Emit capability report
         if: matrix.os == 'ubuntu-22.04'
         run: ./zig-out/bin/wart inspect capabilities --format json > capability-report.json
