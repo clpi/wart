@@ -4,16 +4,13 @@ const Io = std.Io;
 const Threaded = Io.Threaded;
 const testComponentExecution = @import("wasm/component.zig").testComponentExecution;
 
-pub fn main(init: std.process.Init) !void {
-    const allocator = init.gpa;
-    const io = init.io;
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    const io = std.io.getStdOut().writer();
 
-    // Get command line arguments.
-    const args_const = try init.minimal.args.toSlice(init.arena.allocator());
-    const args = try init.arena.allocator().alloc([:0]u8, args_const.len);
-    for (args, args_const) |*dst, src| {
-        dst.* = @constCast(src);
-    }
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
 
     // Parse arguments (skip program name)
     const result = cmd.parseArgs(io, args[1..]) catch |err| {
