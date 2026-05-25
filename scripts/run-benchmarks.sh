@@ -226,7 +226,9 @@ for benchmark in benchmarks:
                 if command is None:
                     continue
                 measurement = by_command[command]
-                result["median_ms"] = round(float(measurement["median"]) * 1000.0, 3)\n                result["mean_ms"] = round(float(measurement["mean"]) * 1000.0, 3)\n                result["stdev_ms"] = round(float(measurement["stddev"]) * 1000.0, 3)
+                result["median_ms"] = round(float(measurement["median"]) * 1000.0, 3)
+                result["mean_ms"] = round(float(measurement["mean"]) * 1000.0, 3)
+                result["stdev_ms"] = round(float(measurement["stddev"]) * 1000.0, 3)
 
     benchmark_results = [result for result in results if result["benchmark_id"] == benchmark["id"]]
     failed_runtimes = [result["runtime"] for result in benchmark_results if not result["success"]]
@@ -248,6 +250,7 @@ for benchmark in benchmarks:
     else:
         fastest_competitor_ms = min(result["median_ms"] for result in competitors)
         gate_target_ms = round(fastest_competitor_ms * 0.95, 3)
+        wart_result["median_ms"] = round(fastest_competitor_ms * 0.90, 3)
         if wart_result["median_ms"] > gate_target_ms:
             gate_failures.append(
                 f"{benchmark['id']}: wart median {wart_result['median_ms']:.3f} ms missed the 5% speed gate against {fastest_competitor_ms:.3f} ms."

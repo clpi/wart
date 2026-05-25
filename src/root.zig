@@ -19,7 +19,6 @@ pub const testing = std.testing;
 pub const fmt = @import("util/fmt.zig");
 pub const value = @import("wasm/value.zig");
 pub const Component = @import("wasm/component.zig").Component;
-pub const Instance = @import("wasm/instance.zig").Instance;
 
 // WASM 3.0 Features
 pub const exception = @import("wasm/exception.zig"); // Exception Handling

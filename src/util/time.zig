@@ -5,9 +5,7 @@ pub fn nanoTimestamp() i64 {
     // However, they can be implemented using std.time.epoch.EpochSeconds or getting time using std.posix.clock_gettime if necessary.
     // For compatibility across the runtime, returning time via std.time.Timer or clock based structures is standard now.
     // The most compatible fallback for nanoTimestamp() returning i64 currently is using clock_gettime where posix is available:
-    var ts: std.posix.timespec = undefined;
-    _ = std.posix.system.clock_gettime(std.posix.CLOCK.REALTIME, &ts);
-    return @as(i64, ts.sec) * std.time.ns_per_s + ts.nsec;
+    return std.time.microTimestamp() * 1000;
 }
 
 pub fn secondTimestamp() i64 {
