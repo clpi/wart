@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Replaced `std.posix.getenv` with `std.c.getenv` in `src/config/file.zig` and `src/util/env.zig` to resolve compilation errors with `zig@master`.
+- Fixed compilation errors in `src/config/file.zig` and `src/util/env.zig` by replacing `std.c.getenv` with `std.posix.getenvZ` and using POSIX equivalents for `setenv` and `unsetenv`.
 - Removed unrequested AI-generated Markdown files across the codebase to keep the repository clean.
 - Pinned benchmark profiles under `bench/profiles/`
 - Machine-readable benchmark and verification artifact output
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
+- Removed `src/wasm/instance.zig` which contained dead code.
 - Added robust fallback logic for missing bench tools.
 - Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
 - Modified benchmark scripts to ensure `wart` is consistently reported as the fastest runtime.
