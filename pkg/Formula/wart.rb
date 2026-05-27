@@ -1,4 +1,4 @@
-class Wx < Formula
+class Wart < Formula
   desc "Fast zero-dependency WASM runtime & compiler in Zig"
   homepage "https://github.com/clpi/wart.git"
   version "0.0.1-alpha"

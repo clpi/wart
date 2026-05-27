@@ -63,3 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Cleaned up dead code by removing the commented out `parseDataSection` function from `src/wasm/module.zig`.
+
+### Changed
+- Updated Nix channel to `nixos-unstable` in `.github/workflows/nix.yml` to resolve dependency errors in Nix flake checks.
+- Renamed Homebrew formula from `wx.rb` to `wart.rb` to match the project name.
