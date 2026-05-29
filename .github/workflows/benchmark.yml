@@ -64,12 +64,12 @@ jobs:
           mkdir build && cd build
           cmake .. -DWAMR_BUILD_AOT=1 -DWAMR_BUILD_FAST_INTERP=1
           make -j$(nproc)
-          sudo cp iwasm /usr/local/bin/
+          sudo find . -name iwasm -exec cp {} /usr/local/bin/ \; || true
           cd ../wamr-compiler
           mkdir build && cd build
           cmake ..
           make -j$(nproc)
-          sudo cp wamrc /usr/local/bin/
+          sudo find . -name wamrc -exec cp {} /usr/local/bin/ \;
 
       - name: Build wart
         run: |
