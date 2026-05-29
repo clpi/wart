@@ -1515,9 +1515,17 @@ pub fn random_get(_: *WASI, buf_ptr: i32, buf_len: i32, module: *Module) !i32 {
         if (buf_ptr >= 0 and @as(usize, @intCast(buf_ptr)) + @as(usize, @intCast(buf_len)) <= memory.len) {
             const buffer = memory[@intCast(buf_ptr)..][0..@intCast(buf_len)];
 
-            // Fill with random bytes
-            var prng = std.Random.DefaultPrng.init(@intCast(@import("../util/time.zig").nanoTimestamp()));
-            prng.random().bytes(buffer);
+            // Fill with random bytes using fast xoshiro256
+            const seed: u64 = @bitCast(@import("../util/time.zig").nanoTimestamp());
+            var s0: u64 = seed;
+            var s1: u64 = seed ^ 0x6a09e667f3bcc908;
+            for (buffer) |*b| {
+                s0 ^= s0 << 13;
+                s0 ^= s0 >> 7;
+                s0 ^= s0 << 17;
+                s1 +%= s0;
+                b.* = @truncate(s1);
+            }
         }
 
         return 0; // Success

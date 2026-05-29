@@ -560,12 +560,19 @@ pub const GCHeap = struct {
     allocations: u64,
     collections: u64,
     bytes_allocated: u64,
+    // Bump allocator for field arrays (avoids per-object heap allocation)
+    field_arena: []Value,
+    field_arena_pos: usize,
+    field_arena_cap: usize,
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         var o = Log.op("GC", "init");
         o.log("Initializing GC heap", .{});
+
+        const arena_size: usize = 4096;
+        const arena = try allocator.alloc(Value, arena_size);
 
         return Self{
             .allocator = allocator,
@@ -577,6 +584,9 @@ pub const GCHeap = struct {
             .allocations = 0,
             .collections = 0,
             .bytes_allocated = 0,
+            .field_arena = arena,
+            .field_arena_pos = 0,
+            .field_arena_cap = arena_size,
         };
     }
 
@@ -586,10 +596,17 @@ pub const GCHeap = struct {
             self.allocations, self.collections,
         });
 
+        const arena_start = @intFromPtr(self.field_arena.ptr);
+        const arena_end = arena_start + self.field_arena_cap * @sizeOf(Value);
+
         for (self.objects.items) |*obj| {
             switch (obj.type) {
                 .struct_obj => {
-                    self.allocator.free(obj.data.struct_obj.fields);
+                    // Only free if NOT in the arena
+                    const ptr = @intFromPtr(obj.data.struct_obj.fields.ptr);
+                    if (ptr < arena_start or ptr >= arena_end) {
+                        self.allocator.free(obj.data.struct_obj.fields);
+                    }
                 },
                 .array => {
                     self.allocator.free(obj.data.array.elements);
@@ -604,6 +621,7 @@ pub const GCHeap = struct {
             self.allocator.free(st.fields);
         }
 
+        self.allocator.free(self.field_arena);
         self.objects.deinit(self.allocator);
         self.free_list.deinit(self.allocator);
         self.struct_types.deinit(self.allocator);
@@ -632,7 +650,11 @@ pub const GCHeap = struct {
         const struct_type = self.struct_types.items[type_index];
         if (field_values.len != struct_type.fields.len) return Error.TypeMismatch;
 
-        const fields = try self.allocator.dupe(Value, field_values);
+        // Use arena for field storage (O(1) bump allocation)
+        const fields = self.arenaAllocFields(field_values.len) catch try self.allocator.dupe(Value, field_values);
+        if (fields.ptr != field_values.ptr) {
+            @memcpy(fields, field_values);
+        }
 
         const obj = GCObject{
             .type = .struct_obj,
@@ -655,6 +677,18 @@ pub const GCHeap = struct {
         });
 
         return GCRef{ .index = index, .generation = self.generation };
+    }
+
+    /// O(1) bump allocation from the field arena
+    fn arenaAllocFields(self: *Self, count: usize) ![]Value {
+        if (self.field_arena_pos + count > self.field_arena_cap) {
+            // Reset arena (simple bump reset - objects are tracked in self.objects)
+            self.field_arena_pos = 0;
+            if (count > self.field_arena_cap) return error.OutOfMemory;
+        }
+        const slice = self.field_arena[self.field_arena_pos..][0..count];
+        self.field_arena_pos += count;
+        return slice;
     }
 
     pub fn allocArray(self: *Self, element_type: value.Type, length: u32, init_value: Value) !GCRef {

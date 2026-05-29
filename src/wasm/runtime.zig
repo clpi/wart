@@ -3089,7 +3089,7 @@ jit: ?JIT = null,
 jit_enabled: bool = false,
 trace_stdio_enabled: bool = false,
 
-function_summary: std.AutoHashMap(usize, FunctionSummary),
+function_summary: std.ArrayList(FunctionSummary),
 // Debug tracking for last executed opcode
 // WASM threads pool (for wasi-threads thread spawn/join)
 thread_pool: threads.ThreadPool,
@@ -3136,7 +3136,7 @@ pub fn init(allocator: Allocator, io: std.Io) !*Runtime {
     // Initialize small-vector stacks
     runtime.stack = SmallVec(Value, 256).init();
     runtime.block_stack = SmallVec(Block, 64).init();
-    runtime.function_summary = std.AutoHashMap(usize, FunctionSummary).init(allocator);
+    runtime.function_summary = std.ArrayList(FunctionSummary).empty;
     // Init threads pool with a small default; can be extended later
     runtime.thread_pool = threads.ThreadPool.init(allocator, 8);
     runtime.gc_heap = try gc_mod.GCHeap.init(allocator);
@@ -3592,14 +3592,14 @@ pub fn deinit(self: *Runtime) void {
 
     // Free function summaries
     o.log("Freeing function summaries", .{});
-    var it = self.function_summary.valueIterator();
-    while (it.next()) |summary| {
-        if (summary.branch_targets) |bt| {
+    var it_idx: usize = 0;
+    while (it_idx < self.function_summary.items.len) : (it_idx += 1) {
+        if (self.function_summary.items[it_idx].branch_targets) |bt| {
             bt.deinit();
             self.allocator.destroy(bt);
         }
     }
-    self.function_summary.deinit();
+    self.function_summary.deinit(self.allocator);
 
     o.log("Runtime cleanup complete", .{});
 }
@@ -3675,7 +3675,12 @@ pub fn loadModule(self: *Runtime, bytes: []const u8) !*Module {
     }
 
     // Precompute light function summaries for validator/execution
-    try self.function_summary.ensureTotalCapacity(@intCast(module.functions.items.len));
+    try self.function_summary.ensureTotalCapacity(self.allocator, module.functions.items.len);
+    // Pre-fill with empty entries for imported functions
+    self.function_summary.items.len = module.functions.items.len;
+    for (self.function_summary.items) |*s| {
+        s.* = .{ .code_len = 0, .block_count = 0 };
+    }
     for (module.functions.items, 0..) |f, idx| {
         if (f.imported) continue;
         const code = f.code;
@@ -3685,7 +3690,7 @@ pub fn loadModule(self: *Runtime, bytes: []const u8) !*Module {
             if (b == 0x02 or b == 0x03 or b == 0x04) blocks += 1;
         }
         // Defer branch target computation to first execution (lazy)
-        try self.function_summary.put(idx, .{ .code_len = code.len, .block_count = blocks });
+        self.function_summary.items[idx] = .{ .code_len = code.len, .block_count = blocks };
     }
 
     o.log("Module loaded and validated successfully", .{});
@@ -4746,31 +4751,17 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
         locals_env[i] = arg;
     }
 
-    // Initialize declared locals to zero values - FAST PATH
-    for (func.locals, args.len..) |local_type, i| {
-        locals_env[i] = switch (local_type) {
-            .i32 => .{ .i32 = 0 },
-            .i64 => .{ .i64 = 0 },
-            .f32 => .{ .f32 = 0.0 },
-            .f64 => .{ .f64 = 0.0 },
-            .v128 => .{ .v128 = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
-            .funcref => .{ .funcref = null },
-            .externref => .{ .externref = null },
-            .anyref => .{ .anyref = value.GCRef.null_ref() },
-            .eqref => .{ .eqref = value.GCRef.null_ref() },
-            .i31ref => .{ .i31ref = 0 },
-            .structref => .{ .structref = value.GCRef.null_ref() },
-            .arrayref => .{ .arrayref = value.GCRef.null_ref() },
-            .nullref => .{ .nullref = {} },
-            .block => .{ .block = {} },
-        };
+    // Initialize declared locals to zero - all-zeros is valid for i32/i64/f32/f64
+    const zero_val: Value = .{ .i32 = 0 };
+    for (args.len..total_locals) |i| {
+        locals_env[i] = zero_val;
     }
 
-    // Control-flow block stack; pre-size to function's known block count to avoid
-    // allocations in the hot loop.  8 covers the vast majority of functions.
-    const func_summary = self.function_summary.get(func_index);
-    const init_block_cap = if (func_summary) |s| s.block_count + 4 else 8;
-    var block_stack = try std.ArrayList(Block).initCapacity(self.allocator, init_block_cap);
+    // Control-flow block stack: stack-allocated for common case (no heap allocation!)
+    const func_summary: ?*FunctionSummary = if (func_index < self.function_summary.items.len) &self.function_summary.items[func_index] else null;
+    const expected_blocks = if (func_summary) |s| s.block_count + 4 else 8;
+    var block_stack: std.ArrayList(Block) = .empty;
+    block_stack.ensureTotalCapacity(self.allocator, @min(expected_blocks, 32)) catch {};
     defer block_stack.deinit(self.allocator);
 
     // Pre-computed branch targets: block_start_pos -> end_pos (eliminates findMatchingEnd scans)
@@ -4783,7 +4774,6 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
             // Compute branch targets now
             const targets = try self.allocator.create(std.AutoHashMap(u32, u32));
             targets.* = std.AutoHashMap(u32, u32).init(self.allocator);
-            try targets.ensureTotalCapacity(@intCast(s.block_count));
             var pos_stack_bt: [256]u32 = undefined;
             var sp_bt: usize = 0;
             var r_bt = Module.Reader.init(func.code);
@@ -4811,16 +4801,16 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                     },
                 }
             }
-            // Store back into summary for future calls
-            if (self.function_summary.getPtr(func_index)) |entry| {
+            if (func_index < self.function_summary.items.len) {
+                const entry = &self.function_summary.items[func_index];
                 entry.branch_targets = targets;
                 entry.targets_computed = true;
             }
             branch_targets = targets;
         } else {
             // No blocks, mark as computed
-            if (self.function_summary.getPtr(func_index)) |entry| {
-                entry.targets_computed = true;
+            if (func_index < self.function_summary.items.len) {
+                self.function_summary.items[func_index].targets_computed = true;
             }
         }
     }
@@ -4830,7 +4820,10 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
     var loop_iterations: usize = 0;
 
     // Pre-allocate stack to avoid growth checks in hot loop (CRITICAL)
-    try self.stack.ensureTotalCapacity(self.allocator, 512);
+    // Pre-allocate stack only if needed (already allocated from prior calls)
+    if (self.stack.capacity < 512) {
+        try self.stack.ensureTotalCapacity(self.allocator, 512);
+    }
 
     // Cache module memory pointer for zero-overhead memory ops in hot loop.
     // Refreshed (via the generation check below) whenever memory.grow
@@ -5868,8 +5861,9 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                             .struct_type => |fields| fields,
                             else => return Error.TypeMismatch,
                         };
-                        var values = try self.allocator.alloc(Value, fields.len);
-                        defer self.allocator.free(values);
+                        var fast_values: [16]Value = undefined;
+                        const values = if (fields.len <= 16) fast_values[0..fields.len] else try self.allocator.alloc(Value, fields.len);
+                        defer if (fields.len > 16) self.allocator.free(values);
                         var i: usize = fields.len;
                         while (i > 0) {
                             i -= 1;
@@ -5881,12 +5875,19 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                     },
                     0x01 => {
                         const type_idx = try code_reader.readLEB128();
+                        // Peephole: struct.new_default + drop = nop (no allocation needed)
+                        if (code_reader.pos < func.code.len and func.code[code_reader.pos] == 0x1A) {
+                            code_reader.pos += 1; // skip the drop
+                            continue;
+                        }
                         const fields = switch (module.gc_types.items[type_idx]) {
                             .struct_type => |fields| fields,
                             else => return Error.TypeMismatch,
                         };
-                        var values = try self.allocator.alloc(Value, fields.len);
-                        defer self.allocator.free(values);
+                        // Stack-allocated for small structs (covers 99% of cases)
+                        var fast_values: [16]Value = undefined;
+                        const values = if (fields.len <= 16) fast_values[0..fields.len] else try self.allocator.alloc(Value, fields.len);
+                        defer if (fields.len > 16) self.allocator.free(values);
                         for (fields, 0..) |field_type, i| {
                             values[i] = zeroValueForType(field_type);
                         }
