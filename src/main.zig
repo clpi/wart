@@ -5,7 +5,7 @@ const Threaded = Io.Threaded;
 const testComponentExecution = @import("wasm/component.zig").testComponentExecution;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const allocator = gpa.allocator();
     const io = std.io.getStdOut().writer();
 
