@@ -648,7 +648,8 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
         }
     }
 
-    const p = std.fmt.bufPrint(out_buf, "{s}/{s}\x00", .{ base_path, path }) catch return error.NameTooLong; return out_buf[0..p.len-1 :0];
+    const p = std.fmt.bufPrint(out_buf, "{s}/{s}\x00", .{ base_path, path }) catch return error.NameTooLong;
+    return out_buf[0 .. p.len - 1 :0];
 }
 
 fn mapResolveSafePathError(err: anyerror) i32 {
