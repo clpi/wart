@@ -25,6 +25,28 @@ test "getEnvVarOwned returns error.EnvironmentVariableNotFound for nonexistent v
 
 const builtin = @import("builtin");
 
+test "getEnvVarOwned retrieves an existing environment variable" {
+    const testing = std.testing;
+
+    if (builtin.os.tag == .windows) {
+        _ = _putenv("TEST_GET_ENV_VAR_OWNED=test_value");
+    } else {
+        _ = setenv("TEST_GET_ENV_VAR_OWNED", "test_value", 1);
+    }
+
+    defer {
+        if (builtin.os.tag == .windows) {
+            _ = _putenv("TEST_GET_ENV_VAR_OWNED=");
+        } else {
+            _ = unsetenv("TEST_GET_ENV_VAR_OWNED");
+        }
+    }
+
+    const result = try getEnvVarOwned(testing.allocator, "TEST_GET_ENV_VAR_OWNED");
+    defer testing.allocator.free(result);
+    try testing.expectEqualStrings("test_value", result);
+}
+
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 extern "c" fn _putenv(envstring: [*:0]const u8) c_int;

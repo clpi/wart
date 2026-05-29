@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Added error test for `getEnvVarOwned` in `src/util/env.zig`.
+- Added test for `getEnvVarOwned` success path in `src/util/env.zig`.
 - Added GitHub action for Homebrew releases (`.github/workflows/release.yml`) which automatically publishes release artifacts and bumps the homebrew formula.
 
 ### Fixed
