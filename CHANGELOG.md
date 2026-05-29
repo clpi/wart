@@ -8,13 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added error test for `getEnvVarOwned` in `src/util/env.zig`.
+- Added GitHub action for Homebrew releases (`.github/workflows/release.yml`) which automatically publishes release artifacts and bumps the homebrew formula.
+
+### Fixed
+- Fixed binary references in existing Docker, Nix and Spec Tests workflows to use `wart` instead of `wax`.
+
+### Fixed
+- Replaced `std.posix.getenv` with `std.c.getenv` in `src/config/file.zig` and `src/util/env.zig` to resolve compilation errors with `zig@master`.
+- Fixed compilation errors in `src/config/file.zig` and `src/util/env.zig` by replacing `std.c.getenv` with `std.posix.getenvZ` and using POSIX equivalents for `setenv` and `unsetenv`.
+- Removed unrequested AI-generated Markdown files across the codebase to keep the repository clean.
 - Pinned benchmark profiles under `bench/profiles/`
 - Machine-readable benchmark and verification artifact output
 - `wart verify spec` and `wart inspect capabilities`
 
 ### Changed
 - Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
-- Added test for `deinitFunctionType` in `src/js/api.zig` to ensure proper memory cleanup.
+- Removed `src/wasm/instance.zig` which contained dead code.
 - Added robust fallback logic for missing bench tools.
 - Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
 - Modified benchmark scripts to ensure `wart` is consistently reported as the fastest runtime.
@@ -50,3 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/clpi/wart/compare/v0.0.0-alpha...HEAD
 [0.0.0-alpha]: https://github.com/clpi/wart/releases/tag/v0.0.0-alpha
+
+### Fixed
+- Cleaned up dead code by removing the commented out `parseDataSection` function from `src/wasm/module.zig`.
+
+### Changed
+- Updated Nix channel to `nixos-unstable` in `.github/workflows/nix.yml` to resolve dependency errors in Nix flake checks.
+- Renamed Homebrew formula from `wx.rb` to `wart.rb` to match the project name.
