@@ -2570,9 +2570,8 @@ pub const ComponentParser = struct {
         const name_bytes = try self.reader.readBytes(name_len);
         const name = try allocator.dupe(u8, name_bytes);
 
-        // TODO: proper type indexing
-        const ty_idx = 0;
-        try self.skipComponentType(); // Skip the type for now
+        const ty_idx_val = try self.reader.readLEB128();
+        const ty_idx = @as(u32, @intCast(ty_idx_val));
 
         return ComponentImport{
             .name = name,
