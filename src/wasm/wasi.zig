@@ -648,7 +648,8 @@ fn resolveSafePath(self: *WASI, dirfd: i32, path: []const u8, out_buf: []u8) ![:
         }
     }
 
-    const p = std.fmt.bufPrint(out_buf, "{s}/{s}\x00", .{ base_path, path }) catch return error.NameTooLong; return out_buf[0..p.len-1 :0];
+    const p = std.fmt.bufPrint(out_buf, "{s}/{s}\x00", .{ base_path, path }) catch return error.NameTooLong;
+    return out_buf[0 .. p.len - 1 :0];
 }
 
 fn mapResolveSafePathError(err: anyerror) i32 {
@@ -2416,4 +2417,28 @@ pub fn path_symlink(self: *WASI, old_path_ptr: i32, old_path_len: i32, dirfd: i3
     } else {
         return -1; // No memory available
     }
+}
+
+test "WASI cliCommandSetStderr" {
+    const testing = std.testing;
+
+    // Set up a mock Io/Threaded instance for WASI init
+    var threaded = Io.Threaded.init(testing.allocator, .{});
+    defer threaded.deinit();
+
+    const args = try testing.allocator.alloc([:0]u8, 0);
+    defer testing.allocator.free(args);
+    const env = try testing.allocator.alloc([:0]u8, 0);
+    defer testing.allocator.free(env);
+
+    var wasi = try WASI.init(testing.allocator, threaded.io(), args, env);
+    defer wasi.deinit();
+
+    // Create a mock command
+    const handle = try wasi.cli.commandCreate("test_cmd");
+
+    // Test commandSetStderr
+    try wasi.cliCommandSetStderr(handle, .{ .inherit = {} });
+    const cmd = try wasi.cli.getCommand(handle);
+    try testing.expectEqual(CLI.StdoutBinding{ .inherit = {} }, cmd.stderr_binding);
 }
