@@ -639,12 +639,10 @@ pub const ComponentInstance = struct {
             try self.imports.put(key, entry.value_ptr.*);
         }
 
-        // TODO: Initialize exports based on component definition
-        // For now, create empty exports
         for (self.component.exports.items) |export_item| {
             const key = try self.allocator.dupe(u8, export_item.name);
-            // TODO: Create actual export values
-            try self.exports.put(key, ComponentValue{ .bool = false }); // Placeholder
+            // Create export value corresponding to the exported component index
+            try self.exports.put(key, ComponentValue{ .func = export_item.ty_idx });
         }
     }
 
@@ -3101,12 +3099,9 @@ pub const ESMLoader = struct {
 
     /// Initialize exports for a component instance based on its definition
     fn initializeExports(self: *Self, instance: *ComponentInstance, component: *const Component) !void {
-        // Initialize exports based on component definition
         for (component.exports.items) |export_item| {
             const key = try self.allocator.dupe(u8, export_item.name);
-            // For now, use placeholder values - in a real implementation, these would be
-            // properly initialized based on the component's export definitions
-            try instance.exports.put(key, ComponentValue{ .bool = false });
+            try instance.exports.put(key, ComponentValue{ .func = export_item.ty_idx });
         }
     }
 
