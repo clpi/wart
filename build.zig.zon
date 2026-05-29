@@ -1,5 +1,5 @@
 .{
-    .name = .wart,
+    .name = "wart",
     .dependencies = .{},
     .version = "0.1.0-alpha",
     .paths = .{"src"},
