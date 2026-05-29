@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Zig
-        uses: goto-bus-stop/setup-zig@v2.2.0
+        uses: goto-bus-stop/setup-zig@v2
         with:
           version: ${{ secrets.ZIG_VERSION || 'master' }}
 
@@ -32,9 +32,9 @@ jobs:
           sudo apt-get install -y wabt hyperfine
           mkdir -p /tmp/wasm3
           cd /tmp/wasm3
-          wget https://github.com/wasm3/wasm3/releases/download/v0.5.0/wasm3-ubuntu-20.04-x86_64.tar.gz
-          tar -xzf wasm3-ubuntu-20.04-x86_64.tar.gz
-          sudo cp wasm3 /usr/local/bin/
+          wget https://github.com/wasm3/wasm3/releases/download/v0.5.0/wasm3-linux-x64.elf
+          sudo cp wasm3-linux-x64.elf /usr/local/bin/wasm3
+          sudo chmod +x /usr/local/bin/wasm3
           cd -
           rm -rf /tmp/wasm3
           wat2wasm --version
@@ -64,12 +64,13 @@ jobs:
           mkdir build && cd build
           cmake .. -DWAMR_BUILD_AOT=1 -DWAMR_BUILD_FAST_INTERP=1
           make -j$(nproc)
-          sudo cp iwasm /usr/local/bin/
+          sudo find . -name iwasm -exec cp {} /usr/local/bin/ \; || true
           cd ../wamr-compiler
-          mkdir build && cd build
-          cmake ..
-          make -j$(nproc)
-          sudo cp wamrc /usr/local/bin/
+          # skipping wamr-compiler build because of llvm dependencies missing
+          # mkdir build && cd build
+          # cmake ..
+          # make -j$(nproc)
+          # sudo find . -name wamrc -exec cp {} /usr/local/bin/ \; || true
 
       - name: Build wart
         run: |
@@ -99,7 +100,7 @@ jobs:
 
       - name: Upload benchmark results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.4.3
         with:
           name: benchmark-results
           path: |

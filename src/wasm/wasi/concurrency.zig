@@ -137,6 +137,7 @@ pub const Channel = struct {
     allocator: Allocator,
     buffer: std.ArrayList([]const u8),
     capacity: usize,
+    head: usize = 0,
     closed: bool,
     mutex: Mutex,
     send_condition: Condition,
@@ -148,6 +149,7 @@ pub const Channel = struct {
             .allocator = allocator,
             .buffer = .empty,
             .capacity = capacity,
+            .head = 0,
             .closed = false,
             .mutex = Mutex{},
             .send_condition = Condition{},
@@ -156,7 +158,7 @@ pub const Channel = struct {
     }
 
     pub fn deinit(self: *Channel) void {
-        for (self.buffer.items) |item| {
+        for (self.buffer.items[self.head..]) |item| {
             self.allocator.free(item);
         }
         self.buffer.deinit(self.allocator);
@@ -171,7 +173,7 @@ pub const Channel = struct {
         }
 
         // Wait for space in buffer
-        while (self.buffer.items.len >= self.capacity) {
+        while (self.buffer.items.len - self.head >= self.capacity) {
             self.send_condition.wait(&self.mutex);
             if (self.closed) {
                 return ConcurrencyError.TaskCancelled;
@@ -188,15 +190,23 @@ pub const Channel = struct {
         defer self.mutex.unlock();
 
         // Wait for data in buffer
-        while (self.buffer.items.len == 0 and !self.closed) {
+        while (self.buffer.items.len - self.head == 0 and !self.closed) {
             self.recv_condition.wait(&self.mutex);
         }
 
-        if (self.buffer.items.len == 0 and self.closed) {
+        if (self.buffer.items.len - self.head == 0 and self.closed) {
             return null;
         }
 
-        const data = self.buffer.orderedRemove(0);
+        const data = self.buffer.items[self.head];
+        self.head += 1;
+        // Compact when half empty and at least 1024 elements consumed
+        if (self.head * 2 >= self.buffer.items.len and self.head >= 1024) {
+            const remaining = self.buffer.items.len - self.head;
+            std.mem.copyForwards([]const u8, self.buffer.items[0..remaining], self.buffer.items[self.head..self.buffer.items.len]);
+            self.buffer.shrinkRetainingCapacity(remaining);
+            self.head = 0;
+        }
         self.send_condition.signal();
         return data;
     }
@@ -221,6 +231,7 @@ pub const WasiConcurrency = struct {
     next_channel_id: ChannelHandle,
     thread_pool: std.ArrayList(Thread),
     task_queue: std.ArrayList(TaskHandle),
+    queue_head: usize = 0,
     queue_mutex: Mutex,
     queue_condition: Condition,
     shutdown: bool,
@@ -235,8 +246,9 @@ pub const WasiConcurrency = struct {
             .next_task_id = 1,
             .next_future_id = 1,
             .next_channel_id = 1,
-            .thread_pool = .empty,
+.thread_pool = std.ArrayList(Thread).init(allocator),
             .task_queue = .empty,
+            .queue_head = 0,
             .queue_mutex = Mutex{},
             .queue_condition = Condition{},
             .shutdown = false,
@@ -298,7 +310,7 @@ pub const WasiConcurrency = struct {
         while (true) {
             self.queue_mutex.lock();
 
-            while (self.task_queue.items.len == 0 and !self.shutdown) {
+            while (self.task_queue.items.len - self.queue_head == 0 and !self.shutdown) {
                 self.queue_condition.wait(&self.queue_mutex);
             }
 
@@ -307,7 +319,15 @@ pub const WasiConcurrency = struct {
                 break;
             }
 
-            const task_id = self.task_queue.orderedRemove(0);
+            const task_id = self.task_queue.items[self.queue_head];
+            self.queue_head += 1;
+            // Compact when half empty and at least 1024 elements consumed
+            if (self.queue_head * 2 >= self.task_queue.items.len and self.queue_head >= 1024) {
+                const remaining = self.task_queue.items.len - self.queue_head;
+                std.mem.copyForwards(TaskHandle, self.task_queue.items[0..remaining], self.task_queue.items[self.queue_head..self.task_queue.items.len]);
+                self.task_queue.shrinkRetainingCapacity(remaining);
+                self.queue_head = 0;
+            }
             self.queue_mutex.unlock();
 
             if (self.tasks.get(task_id)) |task| {
