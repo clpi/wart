@@ -4780,11 +4780,14 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
     const mem64 = module.memory_is_64bit;
 
     while (code_reader.pos < func.code.len) : (loop_iterations += 1) {
-        // Check instruction limit every 4096 iterations (reduced frequency)
-        if (loop_iterations & INSTRUCTION_CHECK_MASK == 0) {
-            self.instruction_count = loop_iterations;
-            if (self.instruction_count > self.max_instructions) {
-                return Error.InstructionLimitExceeded;
+        // Memory generation check only needed after calls (moved to call handlers)
+        // Instruction limit check - very infrequent
+        if (comptime @import("builtin").mode == .Debug) {
+            if (loop_iterations & INSTRUCTION_CHECK_MASK == 0) {
+                self.instruction_count = loop_iterations;
+                if (self.instruction_count > self.max_instructions) {
+                    return Error.InstructionLimitExceeded;
+                }
             }
         }
 
@@ -4794,7 +4797,7 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
             if (module.memory) |m| cached_mem = m;
         }
 
-        const opcode = try code_reader.readByte();
+        const opcode = code_reader.readByteUnchecked();
 
         // Only track in non-release builds to avoid overhead
         if (comptime @import("builtin").mode == .Debug) {
@@ -4851,47 +4854,42 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
             // Most critical hot path - local operations (used billions of times in loops)
             0x20 => { // local.get - SUPERFAST no-check version
                 const idx = try code_reader.readLEB128();
-                try self.stack.append(self.allocator, locals_env[idx]);
+                self.stack.pushUnchecked(locals_env[idx]);
             },
             0x21 => { // local.set - SUPERFAST no-check version
                 const idx = try code_reader.readLEB128();
-                locals_env[idx] = self.stack.pop().?;
+                locals_env[idx] = self.stack.popUnchecked();
             },
             0x22 => { // local.tee - SUPERFAST set local and keep value on stack
                 const idx = try code_reader.readLEB128();
-                if (self.stack.items.len < 1) return Error.StackUnderflow;
-                const val = self.stack.items[self.stack.items.len - 1]; // peek without pop
-                locals_env[idx] = val;
+                locals_env[idx] = self.stack.items[self.stack.items.len - 1];
             },
             0x41 => { // i32.const - SUPERFAST constant loading
                 const val = try code_reader.readSLEB32();
-                try self.stack.append(self.allocator, .{ .i32 = val });
+                self.stack.pushUnchecked(.{ .i32 = val });
             },
             0x42 => { // i64.const - SUPERFAST constant loading
                 const val = try code_reader.readSLEB64();
-                try self.stack.append(self.allocator, .{ .i64 = val });
+                self.stack.pushUnchecked(.{ .i64 = val });
             },
             // i32 arithmetic - ULTRA-FAST fully inlined for zero overhead
             0x6A => { // i32.add - ZERO overhead version
-                const len = self.stack.items.len;
-                const b = self.stack.items[len - 1].i32;
-                const a = self.stack.items[len - 2].i32;
-                self.stack.items[len - 2].i32 = a +% b;
-                self.stack.shrinkRetainingCapacity(len - 1);
+                const len = self.stack.len;
+                self.stack.buf[len - 2].i32 = self.stack.buf[len - 2].i32 +% self.stack.buf[len - 1].i32;
+                self.stack.len = len - 1;
+                self.stack.items.len = len - 1;
             },
             0x6B => { // i32.sub - ZERO overhead version
-                const len = self.stack.items.len;
-                const b = self.stack.items[len - 1].i32;
-                const a = self.stack.items[len - 2].i32;
-                self.stack.items[len - 2].i32 = a -% b;
-                self.stack.shrinkRetainingCapacity(len - 1);
+                const len = self.stack.len;
+                self.stack.buf[len - 2].i32 = self.stack.buf[len - 2].i32 -% self.stack.buf[len - 1].i32;
+                self.stack.len = len - 1;
+                self.stack.items.len = len - 1;
             },
             0x6C => { // i32.mul - ZERO overhead version
-                const len = self.stack.items.len;
-                const b = self.stack.items[len - 1].i32;
-                const a = self.stack.items[len - 2].i32;
-                self.stack.items[len - 2].i32 = a *% b;
-                self.stack.shrinkRetainingCapacity(len - 1);
+                const len = self.stack.len;
+                self.stack.buf[len - 2].i32 = self.stack.buf[len - 2].i32 *% self.stack.buf[len - 1].i32;
+                self.stack.len = len - 1;
+                self.stack.items.len = len - 1;
             },
             0x6D => { // i32.div_s - with zero check
                 const len = self.stack.items.len;

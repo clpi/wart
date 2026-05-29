@@ -38,11 +38,9 @@ pub fn SmallVec(comptime T: type, comptime INLINE: usize) type {
         pub fn ensureTotalCapacity(self: *Self, allocator: std.mem.Allocator, n: usize) !void {
             if (n <= self.capacity) return;
 
-            // Allocate new buffer with extra capacity to avoid frequent reallocations
             const new_cap = @max(n, @max(INLINE, self.capacity * 2));
             const new_buf = try allocator.alloc(T, new_cap);
 
-            // Copy existing items
             if (self.capacity > 0) {
                 @memcpy(new_buf[0..self.len], self.buf[0..self.len]);
                 allocator.free(self.buf[0..self.capacity]);
@@ -50,21 +48,19 @@ pub fn SmallVec(comptime T: type, comptime INLINE: usize) type {
 
             self.buf = new_buf.ptr;
             self.capacity = new_cap;
-            self.items = new_buf[0..self.len];
+            self.items.ptr = new_buf.ptr;
+            self.items.len = self.len;
         }
 
         /// ULTRA-FAST append - inlined for hot path performance
         pub inline fn append(self: *Self, allocator: std.mem.Allocator, v: T) !void {
             @setEvalBranchQuota(1000000);
-            // Ensure we have capacity
             if (self.len >= self.capacity) {
                 try self.ensureTotalCapacity(allocator, self.len + 1);
             }
-            // Direct write - no bounds check, no slice update
             self.buf[self.len] = v;
             self.len += 1;
-            // Update items view for compatibility
-            self.items = self.buf[0..self.len];
+            self.items.len = self.len;
         }
 
         /// ULTRA-FAST pop - inlined for hot path performance
@@ -73,18 +69,29 @@ pub fn SmallVec(comptime T: type, comptime INLINE: usize) type {
             if (self.len == 0) return null;
             self.len -= 1;
             const val = self.buf[self.len];
-            // Update items view for compatibility
-            self.items = self.buf[0..self.len];
+            self.items.len = self.len;
             return val;
         }
 
         /// ULTRA-FAST shrink - inlined for hot path performance
         pub inline fn shrinkRetainingCapacity(self: *Self, new_len: usize) void {
             @setEvalBranchQuota(1000000);
-            if (new_len < self.len) {
-                self.len = new_len;
-                self.items = if (self.capacity > 0) self.buf[0..self.len] else &[_]T{};
-            }
+            self.len = new_len;
+            self.items.len = new_len;
+        }
+
+        /// Zero-overhead push - no capacity check, for pre-allocated hot paths
+        pub inline fn pushUnchecked(self: *Self, v: T) void {
+            self.buf[self.len] = v;
+            self.len += 1;
+            self.items.len = self.len;
+        }
+
+        /// Zero-overhead pop - no empty check
+        pub inline fn popUnchecked(self: *Self) T {
+            self.len -= 1;
+            self.items.len = self.len;
+            return self.buf[self.len];
         }
     };
 }
