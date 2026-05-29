@@ -112,7 +112,7 @@ pub fn exeopts(
     use_lld: bool,
 ) *std.Build.Step.Compile {
     const root_module = b.createModule(.{
-        .sanitize_c = .off,
+        .sanitize_c = null,
         .valgrind = false,
         .root_source_file = b.path("src/main.zig"),
         .error_tracing = false,
@@ -166,7 +166,7 @@ pub fn libopts(b: *std.Build, t: std.Build.ResolvedTarget, optimize: std.builtin
         .root_source_file = b.path("src/root.zig"),
         .no_builtin = true,
         .unwind_tables = .none,
-        .sanitize_c = .off,
+        .sanitize_c = null,
         .single_threaded = true,
         .stack_protector = false,
         .omit_frame_pointer = true,
