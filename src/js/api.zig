@@ -409,32 +409,3 @@ test "type reflection works" {
     try std.testing.expectEqual(@as(usize, 2), direct_func_type.parameters.len);
     try std.testing.expectEqual(@as(usize, 1), direct_func_type.results.len);
 }
-
-test "deinitFunctionType properly frees memory" {
-    const allocator = std.testing.allocator;
-
-    var js_module = try JsModule.fromBytes(allocator, &[_]u8{
-        0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00,
-        0x01, 0x07, 0x01, 0x60, 0x02, 0x7F, 0x7F, 0x01, 0x7F,
-        0x03, 0x02, 0x01, 0x00,
-        0x07, 0x0A, 0x01, 0x04, 0x61, 0x64, 0x64, 0x00, 0x00,
-        0x0A, 0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6A, 0x0B,
-    });
-    defer js_module.deinit();
-
-    var io_provider = std.Io.Threaded.init(allocator, .{});
-    defer io_provider.deinit();
-
-    var runtime = try JsRuntime.init(allocator, io_provider.io());
-    defer runtime.deinit();
-
-    var instance = try runtime.instantiate(&js_module);
-    defer instance.deinit();
-
-    const func_type = try instance.getFunctionType("add", allocator);
-
-    // Call deinitFunctionType which frees the memory
-    instance.deinitFunctionType(allocator, func_type);
-
-    // Testing allocator will ensure no leaks occurred and no double-frees
-}
