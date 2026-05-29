@@ -43,6 +43,7 @@ pub const Concurrency = struct {
     const Channel = struct {
         id: u32,
         buffer: std.ArrayList([]u8),
+        head: usize = 0,
         mutex: @import("sync").Mutex = .{},
 
         pub fn send(self: *Channel, data: []const u8, allocator: std.mem.Allocator) !void {
@@ -54,13 +55,26 @@ pub const Concurrency = struct {
         pub fn recv(self: *Channel) ?[]u8 {
             self.mutex.lock();
             defer self.mutex.unlock();
-            return if (self.buffer.items.len > 0) self.buffer.orderedRemove(0) else null;
+            if (self.head < self.buffer.items.len) {
+                const item = self.buffer.items[self.head];
+                self.head += 1;
+                // Compact when half empty and at least 1024 elements consumed
+                if (self.head * 2 >= self.buffer.items.len and self.head >= 1024) {
+                    const remaining = self.buffer.items.len - self.head;
+                    std.mem.copyForwards([]u8, self.buffer.items[0..remaining], self.buffer.items[self.head..self.buffer.items.len]);
+                    self.buffer.shrinkRetainingCapacity(remaining);
+                    self.head = 0;
+                }
+                return item;
+            }
+            return null;
         }
     };
 
     const ThreadPool = struct {
         threads: []std.Thread,
         work_queue: std.ArrayList(*Task),
+        head: usize = 0,
         mutex: @import("sync").Mutex = .{},
         condition: @import("sync").Condition = .{},
         shutdown: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
@@ -102,7 +116,7 @@ pub const Concurrency = struct {
             while (!pool.shutdown.load(.acquire)) {
                 pool.mutex.lock();
 
-                while (pool.work_queue.items.len == 0 and !pool.shutdown.load(.acquire)) {
+                while (pool.work_queue.items.len - pool.head == 0 and !pool.shutdown.load(.acquire)) {
                     pool.condition.wait(&pool.mutex);
                 }
 
@@ -111,7 +125,15 @@ pub const Concurrency = struct {
                     break;
                 }
 
-                const task = pool.work_queue.orderedRemove(0);
+                const task = pool.work_queue.items[pool.head];
+                pool.head += 1;
+                // Compact when half empty and at least 1024 elements consumed
+                if (pool.head * 2 >= pool.work_queue.items.len and pool.head >= 1024) {
+                    const remaining = pool.work_queue.items.len - pool.head;
+                    std.mem.copyForwards(*Task, pool.work_queue.items[0..remaining], pool.work_queue.items[pool.head..pool.work_queue.items.len]);
+                    pool.work_queue.shrinkRetainingCapacity(remaining);
+                    pool.head = 0;
+                }
                 pool.mutex.unlock();
 
                 // Execute task
@@ -141,7 +163,7 @@ pub const Concurrency = struct {
         self.thread_pool.deinit(self.allocator);
 
         for (self.channels.items) |*channel| {
-            for (channel.buffer.items) |item| {
+            for (channel.buffer.items[channel.head..]) |item| {
                 self.allocator.free(item);
             }
             channel.buffer.deinit();

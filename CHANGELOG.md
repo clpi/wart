@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `wart verify spec` and `wart inspect capabilities`
 
 ### Changed
+- Replaced `std.ArrayList.orderedRemove(0)` operations with highly optimized O(1) circular buffers tracking a `head` index in `Channel`, `ThreadPool`, and `WasiConcurrency` message queues, vastly improving queue iteration and channel pop speed.
+
 - Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
 - Removed `src/wasm/instance.zig` which contained dead code.
 - Added robust fallback logic for missing bench tools.
