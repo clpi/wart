@@ -3069,6 +3069,11 @@ inline fn popArgsInto(stack: *SmallVec(Value, 256), params: []ValueType, dst: []
 const FunctionSummary = struct {
     code_len: usize,
     block_count: usize,
+    /// Pre-computed map from block-start positions to their matching end positions.
+    /// Key: position of the byte *after* the block/loop/if opcode+blocktype (i.e. the
+    /// pos stored in Block.pos for block/loop, or the if_pos for if).
+    /// Value: position of the matching 0x0B byte.
+    branch_targets: ?*std.AutoHashMap(u32, u32) = null,
 };
 
 debug: bool = false,
@@ -3587,6 +3592,13 @@ pub fn deinit(self: *Runtime) void {
 
     // Free function summaries
     o.log("Freeing function summaries", .{});
+    var it = self.function_summary.valueIterator();
+    while (it.next()) |summary| {
+        if (summary.branch_targets) |bt| {
+            bt.deinit();
+            self.allocator.destroy(bt);
+        }
+    }
     self.function_summary.deinit();
 
     o.log("Runtime cleanup complete", .{});
@@ -3676,7 +3688,41 @@ pub fn loadModule(self: *Runtime, bytes: []const u8) !*Module {
                 else => {},
             }
         }
-        try self.function_summary.put(idx, .{ .code_len = code.len, .block_count = blocks });
+        // Pre-compute branch targets (block start -> matching end position)
+        const targets = try self.allocator.create(std.AutoHashMap(u32, u32));
+        targets.* = std.AutoHashMap(u32, u32).init(self.allocator);
+        if (blocks > 0) {
+            try targets.ensureTotalCapacity(@intCast(blocks));
+            var pos_stack: [256]u32 = undefined;
+            var sp: usize = 0;
+            var r = Module.Reader.init(code);
+            while (r.pos < code.len) {
+                const op = r.readByte() catch break;
+                switch (op) {
+                    0x02, 0x03, 0x04 => {
+                        // Skip blocktype
+                        const bt = r.readByte() catch break;
+                        if (bt != 0x40 and !isBlockValueTypeByte(bt) and (bt & 0x80) != 0) {
+                            _ = r.readLEB128() catch break;
+                        }
+                        if (sp < pos_stack.len) {
+                            pos_stack[sp] = @intCast(r.pos);
+                            sp += 1;
+                        }
+                    },
+                    0x0B => {
+                        if (sp > 0) {
+                            sp -= 1;
+                            targets.put(pos_stack[sp], @intCast(r.pos - 1)) catch {};
+                        }
+                    },
+                    else => {
+                        skipInstructionImmediates(&r, op) catch break;
+                    },
+                }
+            }
+        }
+        try self.function_summary.put(idx, .{ .code_len = code.len, .block_count = blocks, .branch_targets = targets });
     }
 
     o.log("Module loaded and validated successfully", .{});
@@ -4759,9 +4805,13 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
 
     // Control-flow block stack; pre-size to function's known block count to avoid
     // allocations in the hot loop.  8 covers the vast majority of functions.
-    const init_block_cap = if (self.function_summary.get(func_index)) |s| s.block_count + 4 else 8;
+    const func_summary = self.function_summary.get(func_index);
+    const init_block_cap = if (func_summary) |s| s.block_count + 4 else 8;
     var block_stack = try std.ArrayList(Block).initCapacity(self.allocator, init_block_cap);
     defer block_stack.deinit(self.allocator);
+
+    // Pre-computed branch targets: block_start_pos -> end_pos (eliminates findMatchingEnd scans)
+    const branch_targets: ?*std.AutoHashMap(u32, u32) = if (func_summary) |s| s.branch_targets else null;
 
     // Execute function code - ULTRA-OPTIMIZED hot loop
     var code_reader = Module.Reader.init(func.code);
@@ -5206,13 +5256,11 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                     if (label_idx == 0 and block_stack.items.len > 0) {
                         const target_block = block_stack.items[block_stack.items.len - 1];
                         if (target_block.type == .loop) {
-                            // Jump back to loop start - ultra fast path
                             code_reader.pos = target_block.pos;
                             continue;
                         }
                     }
 
-                    // Fallback to complex branch handling
                     if (label_idx >= block_stack.items.len) return Error.InvalidAccess;
                     const target_block_idx = block_stack.items.len - 1 - label_idx;
                     const target_block = block_stack.items[target_block_idx];
@@ -5220,20 +5268,70 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                     if (target_block.type == .loop) {
                         code_reader.pos = target_block.pos;
                     } else {
-                        if (try self.findMatchingEnd(func, &code_reader, target_block.pos, target_block.type)) |end_pos| {
+                        // Use pre-computed branch target cache
+                        if (branch_targets) |bt| {
+                            if (bt.get(@intCast(target_block.pos))) |end_pos| {
+                                code_reader.pos = end_pos + 1;
+                            } else {
+                                code_reader.pos = func.code.len;
+                            }
+                        } else if (try self.findMatchingEnd(func, &code_reader, target_block.pos, target_block.type)) |end_pos| {
                             code_reader.pos = end_pos + 1;
                         } else {
                             code_reader.pos = func.code.len;
                         }
                     }
 
-                    // Pop blocks above the target (and the target itself if not a loop)
                     const pop_target_br_if = target_block.type != .loop;
                     const final_idx_br_if = if (pop_target_br_if) target_block_idx else target_block_idx + 1;
-                    while (block_stack.items.len > final_idx_br_if) {
-                        _ = block_stack.pop();
-                    }
+                    block_stack.shrinkRetainingCapacity(final_idx_br_if);
                 }
+            },
+            0x0E => { // br_table - inline for performance
+                const target_count = try code_reader.readLEB128();
+                // Read all targets using stack-allocated buffer for common case
+                var inline_targets: [32]u32 = undefined;
+                const use_inline = target_count <= inline_targets.len;
+                const targets = if (use_inline) inline_targets[0..target_count] else try self.allocator.alloc(u32, target_count);
+                defer if (!use_inline) self.allocator.free(targets);
+                for (targets) |*t| {
+                    t.* = try code_reader.readLEB128();
+                }
+                const default_depth = try code_reader.readLEB128();
+
+                // Pop selector
+                if (self.stack.items.len < 1) return Error.StackUnderflow;
+                const sel = self.stack.items[self.stack.items.len - 1].i32;
+                self.stack.shrinkRetainingCapacity(self.stack.items.len - 1);
+
+                const chosen_depth: u32 = if (sel < 0 or @as(usize, @intCast(sel)) >= targets.len)
+                    default_depth
+                else
+                    targets[@as(usize, @intCast(sel))];
+
+                if (chosen_depth >= block_stack.items.len) return Error.InvalidAccess;
+                const target_idx = block_stack.items.len - 1 - chosen_depth;
+                const target = block_stack.items[target_idx];
+
+                if (target.type == .loop) {
+                    code_reader.pos = target.pos;
+                    block_stack.shrinkRetainingCapacity(target_idx + 1);
+                    continue;
+                }
+
+                // Use pre-computed branch target cache
+                if (branch_targets) |bt| {
+                    if (bt.get(@intCast(target.pos))) |end_pos| {
+                        code_reader.pos = end_pos + 1;
+                    } else {
+                        code_reader.pos = func.code.len;
+                    }
+                } else if (try self.findMatchingEnd(func, &code_reader, target.pos, target.type)) |end_pos| {
+                    code_reader.pos = end_pos + 1;
+                } else {
+                    code_reader.pos = func.code.len;
+                }
+                block_stack.shrinkRetainingCapacity(target_idx);
             },
             0x02 => { // block - FAST PATH
                 const result_type = try readBlockResultType(&code_reader, module);
@@ -5249,8 +5347,13 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 if (block_stack.items.len > 0) {
                     const current_block = block_stack.items[block_stack.items.len - 1];
                     if (current_block.type == .@"if") {
-                        // Skip to end of if/else
-                        if (try self.findMatchingEnd(func, &code_reader, current_block.pos, .@"if")) |end_pos| {
+                        // Use pre-computed branch target cache
+                        if (branch_targets) |bt| {
+                            if (bt.get(@intCast(current_block.pos))) |end_pos| {
+                                code_reader.pos = end_pos + 1;
+                                _ = block_stack.pop();
+                            }
+                        } else if (try self.findMatchingEnd(func, &code_reader, current_block.pos, .@"if")) |end_pos| {
                             code_reader.pos = end_pos + 1;
                             _ = block_stack.pop();
                         }
@@ -5264,13 +5367,11 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 if (label_idx == 0 and block_stack.items.len > 0) {
                     const target_block = block_stack.items[block_stack.items.len - 1];
                     if (target_block.type == .loop) {
-                        // Jump back to loop start - ultra fast path
                         code_reader.pos = target_block.pos;
                         continue;
                     }
                 }
 
-                // Fallback to complex branch handling
                 if (label_idx >= block_stack.items.len) return Error.InvalidAccess;
                 const target_block_idx = block_stack.items.len - 1 - label_idx;
                 const target_block = block_stack.items[target_block_idx];
@@ -5278,7 +5379,14 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 if (target_block.type == .loop) {
                     code_reader.pos = target_block.pos;
                 } else {
-                    if (try self.findMatchingEnd(func, &code_reader, target_block.pos, target_block.type)) |end_pos| {
+                    // Use pre-computed branch target cache
+                    if (branch_targets) |bt| {
+                        if (bt.get(@intCast(target_block.pos))) |end_pos| {
+                            code_reader.pos = end_pos + 1;
+                        } else {
+                            code_reader.pos = func.code.len;
+                        }
+                    } else if (try self.findMatchingEnd(func, &code_reader, target_block.pos, target_block.type)) |end_pos| {
                         code_reader.pos = end_pos + 1;
                     } else {
                         code_reader.pos = func.code.len;
@@ -5288,9 +5396,7 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 // Pop blocks above the target (and the target itself if not a loop)
                 const pop_target = target_block.type != .loop;
                 const final_idx = if (pop_target) target_block_idx else target_block_idx + 1;
-                while (block_stack.items.len > final_idx) {
-                    _ = block_stack.pop();
-                }
+                block_stack.shrinkRetainingCapacity(final_idx);
             },
             0x10 => { // call - critical for simple_bench performance
                 const func_idx = try code_reader.readLEB128();
@@ -5299,46 +5405,22 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
 
                 const called_func = module.functions.items[func_idx];
                 const called_type = module.types.items[called_func.type_index];
+                const n_params = called_type.params.len;
 
-                // Fast path: Check stack size without extensive error handling
-                if (self.stack.items.len < called_type.params.len) return Error.StackUnderflow;
+                if (self.stack.items.len < n_params) return Error.StackUnderflow;
 
-                // Fast path: Use stack-allocated args for common cases
-                if (called_type.params.len <= 4) { // Most functions have <= 4 parameters
-                    var fast_args: [4]Value = undefined;
+                // Direct slice access: args are already contiguous on the stack
+                const args_start = self.stack.items.len - n_params;
+                const result = try self.executeFunction(func_idx, self.stack.items[args_start..self.stack.items.len]);
 
-                    // Pop arguments in reverse order directly into stack array
-                    var i: usize = called_type.params.len;
-                    while (i > 0) {
-                        i -= 1;
-                        fast_args[i] = self.stack.pop().?;
-                    }
-
-                    const result = try self.executeFunction(func_idx, fast_args[0..called_type.params.len]);
-
-                    // If the function returns a value, push it onto the stack
-                    if (called_type.results.len > 0) {
-                        try self.stack.append(self.allocator, result);
-                    }
+                // Shrink stack (remove args) and push result in one shot
+                if (called_type.results.len > 0) {
+                    self.stack.items[args_start] = result;
+                    self.stack.shrinkRetainingCapacity(args_start + 1);
                 } else {
-                    // Fallback to heap allocation for functions with many parameters
-                    const call_args = try self.allocator.alloc(Value, called_type.params.len);
-                    defer self.allocator.free(call_args);
-
-                    var i: usize = called_type.params.len;
-                    while (i > 0) {
-                        i -= 1;
-                        call_args[i] = self.stack.pop().?;
-                    }
-
-                    const result = try self.executeFunction(func_idx, call_args);
-                    if (called_type.results.len > 0) {
-                        try self.stack.append(self.allocator, result);
-                    }
+                    self.stack.shrinkRetainingCapacity(args_start);
                 }
-                // A nested call may have grown linear memory, which reallocates
-                // the backing slice and frees the old one. Refresh the hot-loop
-                // cache so we never read/write through a dangling pointer.
+                // Refresh cached memory after nested call (may have grown)
                 if (module.memory) |m| cached_mem = m;
             },
             // Control flow
@@ -5407,51 +5489,28 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                     break;
                 }
 
-                const block = block_stack.pop();
+                const block = block_stack.pop().?;
 
-                // If block has a result type, ensure we have a value
-                var result_value: ?Value = null;
-                if (block.?.result_type != null) {
-                    if (self.stack.items.len > 0) {
-                        result_value = self.stack.pop();
-                    } else {
-                        // No value on stack, use default value as a recovery mechanism
-                        const default_val: Value = switch (block.?.result_type.?) {
-                            .i32 => .{ .i32 = 0 },
-                            .i64 => .{ .i64 = 0 },
-                            .f32 => .{ .f32 = 0.0 },
-                            .f64 => .{ .f64 = 0.0 },
-                            .funcref => .{ .funcref = null },
-                            .externref => .{ .externref = null },
-                            else => return Error.TypeMismatch,
-                        };
-                        result_value = default_val;
+                // Fast path: no result type - just shrink stack
+                if (block.result_type == null) {
+                    if (self.stack.items.len > block.start_stack_size) {
+                        self.stack.shrinkRetainingCapacity(block.start_stack_size);
                     }
-                }
-
-                // Restore stack to the size before the block, plus the result value if any
-                const target_stack_size = block.?.start_stack_size;
-
-                // Safety check - don't attempt to pop beyond zero
-                if (self.stack.items.len > target_stack_size) {
-                    // Remove any extra values that were pushed during block execution
-                    const to_pop = self.stack.items.len - target_stack_size;
-
-                    for (0..to_pop) |_| {
-                        _ = self.stack.pop();
-                    }
-                } else if (self.stack.items.len < target_stack_size) {
-                    // Stack underflow - missing values, recover by adding zeroes
-                    const to_push = target_stack_size - self.stack.items.len;
-
-                    for (0..to_push) |_| {
-                        try self.stack.append(self.allocator, .{ .i32 = 0 });
-                    }
-                }
-
-                // Add back the result value if there is one
-                if (result_value != null) {
-                    try self.stack.append(self.allocator, result_value.?);
+                } else {
+                    // Has result type - preserve top-of-stack value
+                    const result_value = if (self.stack.items.len > 0)
+                        self.stack.items[self.stack.items.len - 1]
+                    else switch (block.result_type.?) {
+                        .i32 => Value{ .i32 = 0 },
+                        .i64 => Value{ .i64 = 0 },
+                        .f32 => Value{ .f32 = 0.0 },
+                        .f64 => Value{ .f64 = 0.0 },
+                        .funcref => Value{ .funcref = null },
+                        .externref => Value{ .externref = null },
+                        else => return Error.TypeMismatch,
+                    };
+                    self.stack.shrinkRetainingCapacity(block.start_stack_size);
+                    try self.stack.append(self.allocator, result_value);
                 }
             },
             // 0x10 call - handled in fallback for now
@@ -5755,21 +5814,21 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
             0x28 => { // i32.load
                 _ = try code_reader.readLEB128(); // align
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 4 > cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1].i32 = std.mem.readInt(i32, cached_mem[addr..][0..4], .little);
             },
             0x29 => { // i64.load
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 8 > cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i64 = std.mem.readInt(i64, cached_mem[addr..][0..8], .little) };
             },
             0x2A => { // f32.load
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 4 > cached_mem.len) return Error.InvalidAccess;
                 const bits = std.mem.readInt(u32, cached_mem[addr..][0..4], .little);
                 self.stack.items[self.stack.items.len - 1] = .{ .f32 = @bitCast(bits) };
@@ -5777,7 +5836,7 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
             0x2B => { // f64.load
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 8 > cached_mem.len) return Error.InvalidAccess;
                 const bits = std.mem.readInt(u64, cached_mem[addr..][0..8], .little);
                 self.stack.items[self.stack.items.len - 1] = .{ .f64 = @bitCast(bits) };
@@ -5785,70 +5844,70 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
             0x2C => { // i32.load8_s
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr >= cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i32 = @as(i32, @as(i8, @bitCast(cached_mem[addr]))) };
             },
             0x2D => { // i32.load8_u
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr >= cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i32 = @intCast(cached_mem[addr]) };
             },
             0x2E => { // i32.load16_s
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 2 > cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i32 = @as(i32, std.mem.readInt(i16, cached_mem[addr..][0..2], .little)) };
             },
             0x2F => { // i32.load16_u
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 2 > cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i32 = @intCast(std.mem.readInt(u16, cached_mem[addr..][0..2], .little)) };
             },
             0x30 => { // i64.load8_s
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr >= cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i64 = @as(i64, @as(i8, @bitCast(cached_mem[addr]))) };
             },
             0x31 => { // i64.load8_u
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr >= cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i64 = @intCast(cached_mem[addr]) };
             },
             0x32 => { // i64.load16_s
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 2 > cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i64 = @as(i64, std.mem.readInt(i16, cached_mem[addr..][0..2], .little)) };
             },
             0x33 => { // i64.load16_u
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 2 > cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i64 = @intCast(std.mem.readInt(u16, cached_mem[addr..][0..2], .little)) };
             },
             0x34 => { // i64.load32_s
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 4 > cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i64 = @as(i64, std.mem.readInt(i32, cached_mem[addr..][0..4], .little)) };
             },
             0x35 => { // i64.load32_u
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], mem64) +% @as(u64, offset)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[self.stack.items.len - 1].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[self.stack.items.len - 1], true) +% @as(u64, offset)));
                 if (addr + 4 > cached_mem.len) return Error.InvalidAccess;
                 self.stack.items[self.stack.items.len - 1] = .{ .i64 = @intCast(std.mem.readInt(u32, cached_mem[addr..][0..4], .little)) };
             },
@@ -5858,27 +5917,18 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
                 const len = self.stack.items.len;
-                const v = asI32(self.stack.items[len - 1]);
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], mem64) +% @as(u64, offset)));
+                const v = self.stack.items[len - 1].i32;
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[len - 2].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], true) +% @as(u64, offset)));
                 self.stack.shrinkRetainingCapacity(len - 2);
-                if (addr + 4 > cached_mem.len) {
-                    std.debug.print("[wart DIAG] i32.store OOB addr={d} value={d} cached_mem.len={d} func={?d}\n", .{ addr, v, cached_mem.len, self.current_func_index });
-                    const bp: usize = 16842752;
-                    if (bp + 64 <= cached_mem.len) {
-                        std.debug.print("[wart DIAG] bigpage[{d}..]: ", .{bp});
-                        for (cached_mem[bp .. bp + 48]) |b| std.debug.print("{x:0>2} ", .{b});
-                        std.debug.print("\n", .{});
-                    }
-                    return Error.InvalidAccess;
-                }
+                if (addr + 4 > cached_mem.len) return Error.InvalidAccess;
                 std.mem.writeInt(i32, cached_mem[addr..][0..4], v, .little);
             },
             0x37 => { // i64.store
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
                 const len = self.stack.items.len;
-                const v = asI64(self.stack.items[len - 1]);
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], mem64) +% @as(u64, offset)));
+                const v = self.stack.items[len - 1].i64;
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[len - 2].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], true) +% @as(u64, offset)));
                 self.stack.shrinkRetainingCapacity(len - 2);
                 if (addr + 8 > cached_mem.len) return Error.InvalidAccess;
                 std.mem.writeInt(i64, cached_mem[addr..][0..8], v, .little);
@@ -5887,8 +5937,8 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
                 const len = self.stack.items.len;
-                const v: u32 = @bitCast(asF32(self.stack.items[len - 1]));
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], mem64) +% @as(u64, offset)));
+                const v: u32 = @bitCast(self.stack.items[len - 1].f32);
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[len - 2].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], true) +% @as(u64, offset)));
                 self.stack.shrinkRetainingCapacity(len - 2);
                 if (addr + 4 > cached_mem.len) return Error.InvalidAccess;
                 std.mem.writeInt(u32, cached_mem[addr..][0..4], v, .little);
@@ -5897,8 +5947,8 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
                 const len = self.stack.items.len;
-                const v: u64 = @bitCast(asF64(self.stack.items[len - 1]));
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], mem64) +% @as(u64, offset)));
+                const v: u64 = @bitCast(self.stack.items[len - 1].f64);
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[len - 2].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], true) +% @as(u64, offset)));
                 self.stack.shrinkRetainingCapacity(len - 2);
                 if (addr + 8 > cached_mem.len) return Error.InvalidAccess;
                 std.mem.writeInt(u64, cached_mem[addr..][0..8], v, .little);
@@ -5907,8 +5957,8 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
                 const len = self.stack.items.len;
-                const v: u8 = @truncate(asU32(self.stack.items[len - 1]));
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], mem64) +% @as(u64, offset)));
+                const v: u8 = @truncate(@as(u32, @bitCast(self.stack.items[len - 1].i32)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[len - 2].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], true) +% @as(u64, offset)));
                 self.stack.shrinkRetainingCapacity(len - 2);
                 if (addr >= cached_mem.len) return Error.InvalidAccess;
                 cached_mem[addr] = v;
@@ -5917,8 +5967,8 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
                 const len = self.stack.items.len;
-                const v: u16 = @truncate(asU32(self.stack.items[len - 1]));
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], mem64) +% @as(u64, offset)));
+                const v: u16 = @truncate(@as(u32, @bitCast(self.stack.items[len - 1].i32)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[len - 2].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], true) +% @as(u64, offset)));
                 self.stack.shrinkRetainingCapacity(len - 2);
                 if (addr + 2 > cached_mem.len) return Error.InvalidAccess;
                 std.mem.writeInt(u16, cached_mem[addr..][0..2], v, .little);
@@ -5927,8 +5977,8 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
                 const len = self.stack.items.len;
-                const v: u8 = @truncate(@as(u64, @bitCast(asI64(self.stack.items[len - 1]))));
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], mem64) +% @as(u64, offset)));
+                const v: u8 = @truncate(@as(u64, @bitCast(self.stack.items[len - 1].i64)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[len - 2].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], true) +% @as(u64, offset)));
                 self.stack.shrinkRetainingCapacity(len - 2);
                 if (addr >= cached_mem.len) return Error.InvalidAccess;
                 cached_mem[addr] = v;
@@ -5937,8 +5987,8 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
                 const len = self.stack.items.len;
-                const v: u16 = @truncate(@as(u64, @bitCast(asI64(self.stack.items[len - 1]))));
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], mem64) +% @as(u64, offset)));
+                const v: u16 = @truncate(@as(u64, @bitCast(self.stack.items[len - 1].i64)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[len - 2].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], true) +% @as(u64, offset)));
                 self.stack.shrinkRetainingCapacity(len - 2);
                 if (addr + 2 > cached_mem.len) return Error.InvalidAccess;
                 std.mem.writeInt(u16, cached_mem[addr..][0..2], v, .little);
@@ -5947,8 +5997,8 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 _ = try code_reader.readLEB128();
                 const offset: u32 = @truncate(try code_reader.readLEB128());
                 const len = self.stack.items.len;
-                const v: u32 = @truncate(@as(u64, @bitCast(asI64(self.stack.items[len - 1]))));
-                const addr = @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], mem64) +% @as(u64, offset)));
+                const v: u32 = @truncate(@as(u64, @bitCast(self.stack.items[len - 1].i64)));
+                const addr = if (!mem64) @as(usize, @as(u32, @bitCast(self.stack.items[len - 2].i32))) +% offset else @as(usize, @truncate(stackMemAddr(self.stack.items[len - 2], true) +% @as(u64, offset)));
                 self.stack.shrinkRetainingCapacity(len - 2);
                 if (addr + 4 > cached_mem.len) return Error.InvalidAccess;
                 std.mem.writeInt(u32, cached_mem[addr..][0..4], v, .little);

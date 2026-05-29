@@ -41,8 +41,23 @@ bench_files=()
 for extra in bench/wasm/*.wasm; do
   [[ -f "${extra}" ]] && bench_files+=("${extra}")
 done
+for extra in examples/*.wasm; do
+  [[ -f "${extra}" ]] && bench_files+=("${extra}")
+done
 
 mkdir -p "${RESULTS_DIR}"
+
+# Pre-flight: verify wart can execute each file (informational)
+echo "Verifying wart can execute benchmark files..."
+for wasm in "${bench_files[@]}"; do
+  [[ -f "${wasm}" ]] || continue
+  if "${WX_BIN}" "${wasm}" >/dev/null 2>&1; then
+    printf "  %-50s OK\n" "${wasm}"
+  else
+    printf "  %-50s FAIL (will still benchmark with --ignore-failure)\n" "${wasm}"
+  fi
+done
+echo ""
 
 runtime_count=1
 WASMTIME_BIN=""
