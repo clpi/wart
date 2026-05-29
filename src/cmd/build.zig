@@ -10,7 +10,7 @@ pub const Options = struct {
     config: common.Config,
 };
 
-pub fn parse(cfg: common.Config, positional: []const [:0]u8) common.CliError!Options {
+pub fn parse(cfg: common.Config, positional: []const [:0]const u8) common.CliError!Options {
     var options = Options{ .config = cfg };
 
     var i: usize = 0;

@@ -17,7 +17,7 @@ pub const Options = struct {
     value: ?[]const u8 = null,
 };
 
-pub fn parse(cfg: Config, w: []const [:0]u8) common.CliError!Action {
+pub fn parse(cfg: Config, w: []const [:0]const u8) common.CliError!Action {
     _ = cfg;
     const aw: []const u8 = std.mem.sliceAsBytes(w);
     if (aw.len == 0 or eq(aw, "list")) return .list;
@@ -28,7 +28,7 @@ pub fn parse(cfg: Config, w: []const [:0]u8) common.CliError!Action {
     return common.CliError.InvalidCommand;
 }
 
-pub fn exec(cfg: Config, action: Action, positional: []const [:0]u8) common.CliError!Options {
+pub fn exec(cfg: Config, action: Action, positional: []const [:0]const u8) common.CliError!Options {
     _ = cfg;
 
     if (positional.len == 0)

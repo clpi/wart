@@ -16,7 +16,7 @@ const max_call_args = 32;
 const default_entry_points = [_][]const u8{ "_start", "main", "run", "execute" };
 
 pub const Options = struct {
-    wasm_file: ?[:0]u8 = null,
+    wasm_file: ?[:0]const u8 = null,
     config: common.Config,
 };
 
@@ -321,7 +321,7 @@ pub const ShellSession = struct {
     }
 };
 
-pub fn parse(cfg: common.Config, positional: []const [:0]u8) Options {
+pub fn parse(cfg: common.Config, positional: []const [:0]const u8) Options {
     return Options{
         .wasm_file = if (positional.len > 0) positional[0] else null,
         .config = cfg,

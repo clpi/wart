@@ -1,11 +1,9 @@
 const std = @import("std");
 
 pub fn nanoTimestamp() i64 {
-    // In Zig 0.17+, milliTimestamp, microTimestamp, nanoTimestamp, and timestamp functions were removed from std.time.
-    // However, they can be implemented using std.time.epoch.EpochSeconds or getting time using std.posix.clock_gettime if necessary.
-    // For compatibility across the runtime, returning time via std.time.Timer or clock based structures is standard now.
-    // The most compatible fallback for nanoTimestamp() returning i64 currently is using clock_gettime where posix is available:
-    return std.time.microTimestamp() * 1000;
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
+    return @as(i64, ts.sec) * std.time.ns_per_s + @as(i64, ts.nsec);
 }
 
 pub fn secondTimestamp() i64 {

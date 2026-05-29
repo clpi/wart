@@ -14,7 +14,7 @@ pub const Options = struct {
     config: Config,
 };
 
-pub fn parse(base_cfg: Config, positional: []const [:0]u8) common.CliError!Options {
+pub fn parse(base_cfg: Config, positional: []const [:0]const u8) common.CliError!Options {
     var options = Options{ .config = base_cfg };
 
     var i: usize = 0;

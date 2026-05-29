@@ -8,13 +8,13 @@ const Runtime = @import("../wasm/runtime.zig");
 const Config = @import("../config.zig").Config;
 
 pub const RunOptions = struct {
-    wasm_file: [:0]u8,
-    args: []const [:0]u8,
+    wasm_file: [:0]const u8,
+    args: []const [:0]const u8,
     config: Config,
 };
 
 pub const InspectOptions = struct {
-    wasm_file: [:0]u8,
+    wasm_file: [:0]const u8,
     config: Config,
 };
 

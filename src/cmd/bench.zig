@@ -14,14 +14,14 @@ pub const Mode = enum {
 pub const Options = struct {
     config: Config,
     mode: Mode = .suite,
-    wasm_file: ?[:0]u8 = null,
-    args: []const [:0]u8 = &[_][:0]u8{},
+    wasm_file: ?[:0]const u8 = null,
+    args: []const [:0]const u8 = &[_][:0]const u8{},
     profile: []const u8 = "core-universal",
     format: common.ReportFormat = .markdown,
     output: []const u8 = "bench/results",
 };
 
-pub fn parse(base_cfg: Config, positional: []const [:0]u8) common.CliError!Options {
+pub fn parse(base_cfg: Config, positional: []const [:0]const u8) common.CliError!Options {
     var cfg = base_cfg;
     cfg.bench = true;
 

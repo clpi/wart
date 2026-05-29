@@ -11,7 +11,7 @@ pub const Options = union(enum) {
     capabilities: inspect_capabilities.Options,
 };
 
-pub fn parse(cfg: common.Config, positional: []const [:0]u8) common.CliError!Options {
+pub fn parse(cfg: common.Config, positional: []const [:0]const u8) common.CliError!Options {
     if (positional.len == 0) return common.CliError.MissingArgument;
     if (std.mem.eql(u8, positional[0], "capabilities")) {
         return Options{ .capabilities = try inspect_capabilities.parse(cfg, positional[1..]) };

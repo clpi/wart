@@ -18,7 +18,7 @@ pub const Options = struct {
     config: common.Config,
 };
 
-pub fn parse(cfg: common.Config, positional: []const [:0]u8) common.CliError!Options {
+pub fn parse(cfg: common.Config, positional: []const [:0]const u8) common.CliError!Options {
     if (positional.len == 0) {
         return Options{ .action = .list, .config = cfg };
     }

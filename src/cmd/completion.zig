@@ -19,7 +19,7 @@ pub const Options = struct {
     shell: ?Shell = null,
 };
 
-pub fn parse(args: []const [:0]u8) common.CliError!Options {
+pub fn parse(args: []const [:0]const u8) common.CliError!Options {
     if (args.len == 0) return Options{};
     if (args.len > 1) return common.CliError.InvalidArgument;
     return Options{ .shell = try parseShell(args[0]) };

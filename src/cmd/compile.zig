@@ -9,17 +9,17 @@ const AOT = @import("../wasm/aot.zig").AOT;
 const cwd = std.Io.Dir.cwd;
 
 pub const Options = struct {
-    wasm_file: [:0]u8,
+    wasm_file: [:0]const u8,
     output: ?[]const u8 = null,
     optimize: AOT.OptimizeLevel = .Aggressive,
     target_arch: ?std.Target.Cpu.Arch = null,
     config: Config,
 };
 
-pub fn parse(base_cfg: Config, args: []const [:0]u8) common.CliError!Options {
+pub fn parse(base_cfg: Config, args: []const [:0]const u8) common.CliError!Options {
     if (args.len == 0) return common.CliError.MissingArgument;
 
-    var wasm_file: ?[:0]u8 = null;
+    var wasm_file: ?[:0]const u8 = null;
     var output = base_cfg.aot_output;
     var optimize: AOT.OptimizeLevel = .Aggressive;
     var target_arch: ?std.Target.Cpu.Arch = null;

@@ -1,16 +1,11 @@
 const std = @import("std");
 const cmd = @import("cmd.zig");
-const Io = std.Io;
-const Threaded = Io.Threaded;
-const testComponentExecution = @import("wasm/component.zig").testComponentExecution;
 
-pub fn main() !void {
-    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    const allocator = gpa.allocator();
-    const io = std.io.getStdOut().writer();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.arena.allocator();
+    const io = init.io;
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(allocator);
 
     // Parse arguments (skip program name)
     const result = cmd.parseArgs(io, args[1..]) catch |err| {

@@ -11,7 +11,7 @@ pub const Options = struct {
     output: []const u8 = "artifacts/spec",
 };
 
-pub fn parse(base_cfg: Config, positional: []const [:0]u8) common.CliError!Options {
+pub fn parse(base_cfg: Config, positional: []const [:0]const u8) common.CliError!Options {
     var opts = Options{ .config = base_cfg };
     var i: usize = 0;
 

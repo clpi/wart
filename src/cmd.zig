@@ -43,7 +43,7 @@ pub const CliResult = union(enum) {
     shell: shell_cmd.Options,
 };
 
-pub fn parseArgs(io: std.Io, args: []const [:0]u8) CliError!CliResult {
+pub fn parseArgs(io: std.Io, args: []const [:0]const u8) CliError!CliResult {
     if (args.len == 0) return CliResult{ .help = .{} };
 
     var cfg = config_loader.loadFromDisk(std.heap.c_allocator, io);
@@ -79,7 +79,7 @@ pub fn parseArgs(io: std.Io, args: []const [:0]u8) CliError!CliResult {
 
         if (arg.len > 0 and arg[0] == '-') {
             if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
-                const remaining = if (i + 1 < args.len) args[i + 1 ..] else &[_][:0]u8{};
+                const remaining = if (i + 1 < args.len) args[i + 1 ..] else &[_][:0]const u8{};
                 return CliResult{ .help = try help_cmd.parse(remaining) };
             }
             if (std.mem.eql(u8, arg, "-v") or std.mem.eql(u8, arg, "--version")) {
@@ -181,7 +181,7 @@ pub fn parseArgs(io: std.Io, args: []const [:0]u8) CliError!CliResult {
     }
 }
 
-pub fn run(allocator: std.mem.Allocator, io: std.Io, program_path: [:0]u8, result: CliResult) !void {
+pub fn run(allocator: std.mem.Allocator, io: std.Io, program_path: [:0]const u8, result: CliResult) !void {
     const command_name = blk: {
         const full_name = program_path;
         if (full_name.len == 0) break :blk full_name;
@@ -212,7 +212,7 @@ pub fn printHelp(program_name: []const u8, opts: help_cmd.Options) void {
     help_cmd.run(program_name, opts);
 }
 
-fn consumeGlobalOption(args: []const [:0]u8, idx: usize, cfg: *Config, command_hint: *?Command) CliError!usize {
+fn consumeGlobalOption(args: []const [:0]const u8, idx: usize, cfg: *Config, command_hint: *?Command) CliError!usize {
     const arg = args[idx];
 
     if (std.mem.eql(u8, arg, "--debug") or std.mem.eql(u8, arg, "-d")) {

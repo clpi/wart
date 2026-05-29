@@ -7,7 +7,7 @@ const print = common.print;
 
 pub const Options = execution.RunOptions;
 
-pub fn parse(cfg: common.Config, positional: []const [:0]u8) common.CliError!Options {
+pub fn parse(cfg: common.Config, positional: []const [:0]const u8) common.CliError!Options {
     const flagged_file = cfg.cppfile_path orelse cfg.cfile_path;
     const using_flagged_file = flagged_file != null;
     const wasm_file_const: [:0]const u8 = if (using_flagged_file)
@@ -20,7 +20,7 @@ pub fn parse(cfg: common.Config, positional: []const [:0]u8) common.CliError!Opt
     const args_slice = if (using_flagged_file) positional else positional[1..];
 
     return Options{
-        .wasm_file = @constCast(wasm_file_const),
+        .wasm_file = wasm_file_const,
         .args = args_slice,
         .config = cfg,
     };

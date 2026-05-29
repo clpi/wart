@@ -7,7 +7,7 @@ pub const Options = struct {
     format: common.ReportFormat = .json,
 };
 
-pub fn parse(cfg: common.Config, positional: []const [:0]u8) common.CliError!Options {
+pub fn parse(cfg: common.Config, positional: []const [:0]const u8) common.CliError!Options {
     var opts = Options{ .config = cfg };
     var i: usize = 0;
     while (i < positional.len) {
