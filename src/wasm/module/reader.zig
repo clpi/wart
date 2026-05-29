@@ -32,14 +32,20 @@ pub inline fn readLEB128(self: *Reader) !u32 {
     if ((byte & 0x80) == 0) {
         return byte;
     }
+    // 2-byte fast path (covers 128-16383, most offsets and larger indices)
+    const byte2 = self.bytes[self.pos];
+    self.pos += 1;
+    if ((byte2 & 0x80) == 0) {
+        return (@as(u32, byte & 0x7f)) | (@as(u32, byte2) << 7);
+    }
     // Multi-byte case - rare, use slower path
-    return self.readLEB128Slow(byte);
+    return self.readLEB128Slow2(byte, byte2);
 }
 
-/// Slow path for multi-byte LEB128
-fn readLEB128Slow(self: *Reader, first_byte: u8) !u32 {
-    var result: u32 = first_byte & 0x7f;
-    var shift: u5 = 7;
+/// Slow path for 3+ byte LEB128
+fn readLEB128Slow2(self: *Reader, first_byte: u8, second_byte: u8) !u32 {
+    var result: u32 = (@as(u32, first_byte & 0x7f)) | (@as(u32, second_byte & 0x7f) << 7);
+    var shift: u5 = 14;
     while (true) {
         if (self.pos >= self.bytes.len) return error.EndOfStream;
         const next_byte = self.bytes[self.pos];

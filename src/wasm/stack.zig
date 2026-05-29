@@ -52,9 +52,14 @@ pub fn SmallVec(comptime T: type, comptime INLINE: usize) type {
             self.items.len = self.len;
         }
 
+        /// Sync .items slice to current state (call before passing .items to external code)
+        pub inline fn syncItems(self: *Self) void {
+            self.items.len = self.len;
+        }
+
         /// ULTRA-FAST append - inlined for hot path performance
         pub inline fn append(self: *Self, allocator: std.mem.Allocator, v: T) !void {
-            @setEvalBranchQuota(1000000);
+            @setEvalBranchQuota(100000);
             if (self.len >= self.capacity) {
                 try self.ensureTotalCapacity(allocator, self.len + 1);
             }
@@ -65,23 +70,23 @@ pub fn SmallVec(comptime T: type, comptime INLINE: usize) type {
 
         /// ULTRA-FAST pop - inlined for hot path performance
         pub inline fn pop(self: *Self) ?T {
-            @setEvalBranchQuota(1000000);
+            @setEvalBranchQuota(100000);
             if (self.len == 0) return null;
             self.len -= 1;
-            const val = self.buf[self.len];
             self.items.len = self.len;
-            return val;
+            return self.buf[self.len];
         }
 
         /// ULTRA-FAST shrink - inlined for hot path performance
         pub inline fn shrinkRetainingCapacity(self: *Self, new_len: usize) void {
-            @setEvalBranchQuota(1000000);
+            @setEvalBranchQuota(100000);
             self.len = new_len;
             self.items.len = new_len;
         }
 
         /// Zero-overhead push - no capacity check, for pre-allocated hot paths
         pub inline fn pushUnchecked(self: *Self, v: T) void {
+            @setEvalBranchQuota(100000);
             self.buf[self.len] = v;
             self.len += 1;
             self.items.len = self.len;
@@ -89,6 +94,7 @@ pub fn SmallVec(comptime T: type, comptime INLINE: usize) type {
 
         /// Zero-overhead pop - no empty check
         pub inline fn popUnchecked(self: *Self) T {
+            @setEvalBranchQuota(100000);
             self.len -= 1;
             self.items.len = self.len;
             return self.buf[self.len];

@@ -17,7 +17,7 @@ const wasi_types = if (@hasDecl(std.os, "wasi")) std.os.wasi else struct {};
 
 // Increase comptime evaluation limit for large switch statements
 comptime {
-    @setEvalBranchQuota(100000);
+    @setEvalBranchQuota(10000000);
 }
 
 pub const value = @import("value.zig");
@@ -3070,10 +3070,10 @@ const FunctionSummary = struct {
     code_len: usize,
     block_count: usize,
     /// Pre-computed map from block-start positions to their matching end positions.
-    /// Key: position of the byte *after* the block/loop/if opcode+blocktype (i.e. the
-    /// pos stored in Block.pos for block/loop, or the if_pos for if).
-    /// Value: position of the matching 0x0B byte.
+    /// Computed lazily on first function execution.
     branch_targets: ?*std.AutoHashMap(u32, u32) = null,
+    /// Whether branch targets have been computed yet
+    targets_computed: bool = false,
 };
 
 debug: bool = false,
@@ -3679,50 +3679,13 @@ pub fn loadModule(self: *Runtime, bytes: []const u8) !*Module {
     for (module.functions.items, 0..) |f, idx| {
         if (f.imported) continue;
         const code = f.code;
+        // Quick block count (just check for block opcodes in raw bytes - fast scan)
         var blocks: usize = 0;
-        var i: usize = 0;
-        while (i < code.len) : (i += 1) {
-            const b = code[i];
-            switch (b) {
-                0x02, 0x03, 0x04 => blocks += 1, // block/loop/if
-                else => {},
-            }
+        for (code) |b| {
+            if (b == 0x02 or b == 0x03 or b == 0x04) blocks += 1;
         }
-        // Pre-compute branch targets (block start -> matching end position)
-        const targets = try self.allocator.create(std.AutoHashMap(u32, u32));
-        targets.* = std.AutoHashMap(u32, u32).init(self.allocator);
-        if (blocks > 0) {
-            try targets.ensureTotalCapacity(@intCast(blocks));
-            var pos_stack: [256]u32 = undefined;
-            var sp: usize = 0;
-            var r = Module.Reader.init(code);
-            while (r.pos < code.len) {
-                const op = r.readByte() catch break;
-                switch (op) {
-                    0x02, 0x03, 0x04 => {
-                        // Skip blocktype
-                        const bt = r.readByte() catch break;
-                        if (bt != 0x40 and !isBlockValueTypeByte(bt) and (bt & 0x80) != 0) {
-                            _ = r.readLEB128() catch break;
-                        }
-                        if (sp < pos_stack.len) {
-                            pos_stack[sp] = @intCast(r.pos);
-                            sp += 1;
-                        }
-                    },
-                    0x0B => {
-                        if (sp > 0) {
-                            sp -= 1;
-                            targets.put(pos_stack[sp], @intCast(r.pos - 1)) catch {};
-                        }
-                    },
-                    else => {
-                        skipInstructionImmediates(&r, op) catch break;
-                    },
-                }
-            }
-        }
-        try self.function_summary.put(idx, .{ .code_len = code.len, .block_count = blocks, .branch_targets = targets });
+        // Defer branch target computation to first execution (lazy)
+        try self.function_summary.put(idx, .{ .code_len = code.len, .block_count = blocks });
     }
 
     o.log("Module loaded and validated successfully", .{});
@@ -4811,7 +4774,56 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
     defer block_stack.deinit(self.allocator);
 
     // Pre-computed branch targets: block_start_pos -> end_pos (eliminates findMatchingEnd scans)
-    const branch_targets: ?*std.AutoHashMap(u32, u32) = if (func_summary) |s| s.branch_targets else null;
+    // Lazy computation: only compute on first call to this function
+    var branch_targets: ?*std.AutoHashMap(u32, u32) = null;
+    if (func_summary) |s| {
+        if (s.targets_computed) {
+            branch_targets = s.branch_targets;
+        } else if (s.block_count > 0) {
+            // Compute branch targets now
+            const targets = try self.allocator.create(std.AutoHashMap(u32, u32));
+            targets.* = std.AutoHashMap(u32, u32).init(self.allocator);
+            try targets.ensureTotalCapacity(@intCast(s.block_count));
+            var pos_stack_bt: [256]u32 = undefined;
+            var sp_bt: usize = 0;
+            var r_bt = Module.Reader.init(func.code);
+            while (r_bt.pos < func.code.len) {
+                const op_bt = r_bt.readByte() catch break;
+                switch (op_bt) {
+                    0x02, 0x03, 0x04 => {
+                        const bt_byte = r_bt.readByte() catch break;
+                        if (bt_byte != 0x40 and !isBlockValueTypeByte(bt_byte) and (bt_byte & 0x80) != 0) {
+                            _ = r_bt.readLEB128() catch break;
+                        }
+                        if (sp_bt < pos_stack_bt.len) {
+                            pos_stack_bt[sp_bt] = @intCast(r_bt.pos);
+                            sp_bt += 1;
+                        }
+                    },
+                    0x0B => {
+                        if (sp_bt > 0) {
+                            sp_bt -= 1;
+                            targets.put(pos_stack_bt[sp_bt], @intCast(r_bt.pos - 1)) catch {};
+                        }
+                    },
+                    else => {
+                        skipInstructionImmediates(&r_bt, op_bt) catch break;
+                    },
+                }
+            }
+            // Store back into summary for future calls
+            if (self.function_summary.getPtr(func_index)) |entry| {
+                entry.branch_targets = targets;
+                entry.targets_computed = true;
+            }
+            branch_targets = targets;
+        } else {
+            // No blocks, mark as computed
+            if (self.function_summary.getPtr(func_index)) |entry| {
+                entry.targets_computed = true;
+            }
+        }
+    }
 
     // Execute function code - ULTRA-OPTIMIZED hot loop
     var code_reader = Module.Reader.init(func.code);
@@ -4902,8 +4914,87 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
             0x01 => { // nop - do nothing, fastest possible
             },
             // Most critical hot path - local operations (used billions of times in loops)
-            0x20 => { // local.get - SUPERFAST no-check version
+            0x20 => { // local.get - SUPERFAST with lookahead fusion
                 const idx = try code_reader.readLEB128();
+                if (idx >= total_locals) return Error.InvalidAccess;
+                // Lookahead fusion: local.get + local.get + binop → fused
+                if (code_reader.pos < func.code.len and func.code[code_reader.pos] == 0x20) {
+                    const save_pos = code_reader.pos;
+                    code_reader.pos += 1;
+                    const idx2 = code_reader.readLEB128() catch {
+                        code_reader.pos = save_pos;
+                        self.stack.pushUnchecked(locals_env[idx]);
+                        continue;
+                    };
+                    if (idx2 < total_locals and code_reader.pos < func.code.len) {
+                        const next_op = func.code[code_reader.pos];
+                        switch (next_op) {
+                            0x6A => { // i32.add
+                                code_reader.pos += 1;
+                                self.stack.pushUnchecked(.{ .i32 = locals_env[idx].i32 +% locals_env[idx2].i32 });
+                                continue;
+                            },
+                            0x6B => { // i32.sub
+                                code_reader.pos += 1;
+                                self.stack.pushUnchecked(.{ .i32 = locals_env[idx].i32 -% locals_env[idx2].i32 });
+                                continue;
+                            },
+                            0x6C => { // i32.mul
+                                code_reader.pos += 1;
+                                self.stack.pushUnchecked(.{ .i32 = locals_env[idx].i32 *% locals_env[idx2].i32 });
+                                continue;
+                            },
+                            0x71 => { // i32.and
+                                code_reader.pos += 1;
+                                self.stack.pushUnchecked(.{ .i32 = locals_env[idx].i32 & locals_env[idx2].i32 });
+                                continue;
+                            },
+                            0x72 => { // i32.or
+                                code_reader.pos += 1;
+                                self.stack.pushUnchecked(.{ .i32 = locals_env[idx].i32 | locals_env[idx2].i32 });
+                                continue;
+                            },
+                            0x48 => { // i32.lt_s
+                                code_reader.pos += 1;
+                                self.stack.pushUnchecked(.{ .i32 = if (locals_env[idx].i32 < locals_env[idx2].i32) @as(i32, 1) else @as(i32, 0) });
+                                continue;
+                            },
+                            0x4A => { // i32.gt_s
+                                code_reader.pos += 1;
+                                self.stack.pushUnchecked(.{ .i32 = if (locals_env[idx].i32 > locals_env[idx2].i32) @as(i32, 1) else @as(i32, 0) });
+                                continue;
+                            },
+                            else => {},
+                        }
+                    }
+                    // No fusion matched - restore and push first local only
+                    code_reader.pos = save_pos;
+                }
+                // Lookahead: local.get + i32.const + i32.add + local.set → fused inc
+                if (code_reader.pos < func.code.len and func.code[code_reader.pos] == 0x41) {
+                    const save_pos = code_reader.pos;
+                    code_reader.pos += 1;
+                    const const_val = code_reader.readSLEB32() catch {
+                        code_reader.pos = save_pos;
+                        self.stack.pushUnchecked(locals_env[idx]);
+                        continue;
+                    };
+                    if (code_reader.pos + 1 < func.code.len) {
+                        const op2 = func.code[code_reader.pos];
+                        const op3_pos = code_reader.pos + 1;
+                        if (op2 == 0x6A and op3_pos < func.code.len and func.code[op3_pos] == 0x21) {
+                            code_reader.pos = op3_pos + 1;
+                            if (code_reader.readLEB128()) |set_idx| {
+                                if (set_idx < total_locals) {
+                                    locals_env[set_idx].i32 = locals_env[idx].i32 +% const_val;
+                                    continue;
+                                }
+                            } else |_| {}
+                            code_reader.pos = save_pos;
+                        }
+                    }
+                    code_reader.pos = save_pos;
+                }
                 self.stack.pushUnchecked(locals_env[idx]);
             },
             0x21 => { // local.set - SUPERFAST no-check version
@@ -4914,8 +5005,20 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
                 const idx = try code_reader.readLEB128();
                 locals_env[idx] = self.stack.items[self.stack.items.len - 1];
             },
-            0x41 => { // i32.const - SUPERFAST constant loading
+            0x41 => { // i32.const - SUPERFAST with lookahead fusion
                 const val = try code_reader.readSLEB32();
+                // Lookahead: i32.const + local.set → direct local assign (no stack)
+                if (code_reader.pos < func.code.len and func.code[code_reader.pos] == 0x21) {
+                    const save_pos = code_reader.pos;
+                    code_reader.pos += 1;
+                    if (code_reader.readLEB128()) |set_idx| {
+                        if (set_idx < total_locals) {
+                            locals_env[set_idx] = .{ .i32 = val };
+                            continue;
+                        }
+                    } else |_| {}
+                    code_reader.pos = save_pos;
+                }
                 self.stack.pushUnchecked(.{ .i32 = val });
             },
             0x42 => { // i64.const - SUPERFAST constant loading
@@ -5409,7 +5512,164 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
 
                 if (self.stack.items.len < n_params) return Error.StackUnderflow;
 
-                // Direct slice access: args are already contiguous on the stack
+                // FAST PATH: inline tiny non-imported functions without full executeFunction overhead
+                // Criteria: not imported, code <= 64 bytes, <= 8 total locals, no nested calls
+                if (!called_func.imported and called_func.code.len <= 64 and
+                    n_params + called_func.locals.len <= 8)
+                {
+                    // Quick scan: check if function has calls (0x10, 0x11) or memory.grow (0xFC 0x00)
+                    var has_calls = false;
+                    for (called_func.code) |b| {
+                        if (b == 0x10 or b == 0x11) {
+                            has_calls = true;
+                            break;
+                        }
+                    }
+                    if (!has_calls) {
+                        // Inline execution: save/restore state, execute in-place
+                        const args_start = self.stack.items.len - n_params;
+                        const save_func_idx = self.current_func_index;
+                        self.current_func_index = @intCast(func_idx);
+
+                        // Set up inline locals
+                        const inline_total = n_params + called_func.locals.len;
+                        var inline_locals: [8]Value = undefined;
+                        for (0..n_params) |pi| {
+                            inline_locals[pi] = self.stack.items[args_start + pi];
+                        }
+                        for (called_func.locals, n_params..) |local_t, li| {
+                            inline_locals[li] = switch (local_t) {
+                                .i32 => .{ .i32 = 0 },
+                                .i64 => .{ .i64 = 0 },
+                                .f32 => .{ .f32 = 0.0 },
+                                .f64 => .{ .f64 = 0.0 },
+                                else => .{ .i32 = 0 },
+                            };
+                        }
+                        self.stack.shrinkRetainingCapacity(args_start);
+
+                        // Execute inline with a mini interpreter
+                        var ir = Module.Reader.init(called_func.code);
+                        var inline_result: Value = .{ .i32 = 0 };
+                        var inline_depth: usize = 0;
+                        var inline_done = false;
+
+                        while (ir.pos < called_func.code.len and !inline_done) {
+                            const iop = ir.readByteUnchecked();
+                            switch (iop) {
+                                0x01 => {}, // nop
+                                0x0F => { inline_done = true; }, // return
+                                0x02, 0x03, 0x04 => { // block/loop/if
+                                    _ = readBlockResultType(&ir, module) catch {
+                                        inline_done = true;
+                                        break;
+                                    };
+                                    if (iop == 0x04) {
+                                        // if: check condition
+                                        if (self.stack.len == 0) { inline_done = true; break; }
+                                        const cond = self.stack.popUnchecked();
+                                        if (cond.i32 == 0) {
+                                            // Skip to end
+                                            var d: usize = 1;
+                                            while (ir.pos < called_func.code.len and d > 0) {
+                                                const sk = ir.readByte() catch break;
+                                                switch (sk) {
+                                                    0x02, 0x03, 0x04 => d += 1,
+                                                    0x0B => d -= 1,
+                                                    else => skipInstructionImmediates(&ir, sk) catch { d = 0; },
+                                                }
+                                            }
+                                        } else {
+                                            inline_depth += 1;
+                                        }
+                                    } else {
+                                        inline_depth += 1;
+                                    }
+                                },
+                                0x0B => { // end
+                                    if (inline_depth == 0) { inline_done = true; } else { inline_depth -= 1; }
+                                },
+                                0x20 => { // local.get
+                                    const li = ir.readLEB128() catch break;
+                                    if (li < inline_total) self.stack.pushUnchecked(inline_locals[li]);
+                                },
+                                0x21 => { // local.set
+                                    const li = ir.readLEB128() catch break;
+                                    if (li < inline_total and self.stack.len > 0) inline_locals[li] = self.stack.popUnchecked();
+                                },
+                                0x22 => { // local.tee
+                                    const li = ir.readLEB128() catch break;
+                                    if (li < inline_total and self.stack.len > 0) inline_locals[li] = self.stack.items[self.stack.len - 1];
+                                },
+                                0x23 => { // global.get
+                                    const gi = ir.readLEB128() catch break;
+                                    if (gi < module.globals.items.len) self.stack.pushUnchecked(module.globals.items[gi].value);
+                                },
+                                0x24 => { // global.set
+                                    const gi = ir.readLEB128() catch break;
+                                    if (gi < module.globals.items.len and self.stack.len > 0) module.globals.items[gi].value = self.stack.popUnchecked();
+                                },
+                                0x41 => { // i32.const
+                                    const v = ir.readSLEB32() catch break;
+                                    self.stack.pushUnchecked(.{ .i32 = v });
+                                },
+                                0x42 => { // i64.const
+                                    const v = ir.readSLEB64() catch break;
+                                    self.stack.pushUnchecked(.{ .i64 = v });
+                                },
+                                0x6A => { // i32.add
+                                    const l = self.stack.len;
+                                    self.stack.buf[l - 2].i32 = self.stack.buf[l - 2].i32 +% self.stack.buf[l - 1].i32;
+                                    self.stack.len = l - 1;
+                                    self.stack.items.len = l - 1;
+                                },
+                                0x6B => { // i32.sub
+                                    const l = self.stack.len;
+                                    self.stack.buf[l - 2].i32 = self.stack.buf[l - 2].i32 -% self.stack.buf[l - 1].i32;
+                                    self.stack.len = l - 1;
+                                    self.stack.items.len = l - 1;
+                                },
+                                0x6C => { // i32.mul
+                                    const l = self.stack.len;
+                                    self.stack.buf[l - 2].i32 = self.stack.buf[l - 2].i32 *% self.stack.buf[l - 1].i32;
+                                    self.stack.len = l - 1;
+                                    self.stack.items.len = l - 1;
+                                },
+                                else => {
+                                    // Fall back to full executeFunction for unsupported opcodes
+                                    self.current_func_index = save_func_idx;
+                                    // Restore args on stack for full call
+                                    for (0..n_params) |pi| {
+                                        self.stack.pushUnchecked(inline_locals[pi]);
+                                    }
+                                    const args_s = self.stack.items.len - n_params;
+                                    const res = try self.executeFunction(func_idx, self.stack.items[args_s..self.stack.items.len]);
+                                    if (called_type.results.len > 0) {
+                                        self.stack.items[args_s] = res;
+                                        self.stack.shrinkRetainingCapacity(args_s + 1);
+                                    } else {
+                                        self.stack.shrinkRetainingCapacity(args_s);
+                                    }
+                                    if (module.memory) |m| cached_mem = m;
+                                    continue;
+                                },
+                            }
+                        }
+
+                        // Get result
+                        if (called_type.results.len > 0 and self.stack.len > args_start) {
+                            inline_result = self.stack.items[self.stack.len - 1];
+                            self.stack.shrinkRetainingCapacity(args_start);
+                            self.stack.pushUnchecked(inline_result);
+                        } else if (self.stack.len > args_start and called_type.results.len == 0) {
+                            self.stack.shrinkRetainingCapacity(args_start);
+                        }
+                        self.current_func_index = save_func_idx;
+                        continue;
+                    }
+                }
+
+                // Standard call path
                 const args_start = self.stack.items.len - n_params;
                 const result = try self.executeFunction(func_idx, self.stack.items[args_start..self.stack.items.len]);
 
@@ -5666,14 +5926,14 @@ pub fn executeFunction(self: *Runtime, func_index: usize, args: []const Value) !
             },
             // ── f32.const / f64.const ──────────────────────────────────────────────
             0x43 => { // f32.const
-                const bytes = try code_reader.readBytes(4);
-                const bits = std.mem.readInt(u32, bytes[0..4], .little);
-                try self.stack.append(self.allocator, .{ .f32 = @bitCast(bits) });
+                const bytes = code_reader.bytes[code_reader.pos..][0..4];
+                code_reader.pos += 4;
+                self.stack.pushUnchecked(.{ .f32 = @bitCast(std.mem.readInt(u32, bytes, .little)) });
             },
             0x44 => { // f64.const
-                const bytes = try code_reader.readBytes(8);
-                const bits = std.mem.readInt(u64, bytes[0..8], .little);
-                try self.stack.append(self.allocator, .{ .f64 = @bitCast(bits) });
+                const bytes = code_reader.bytes[code_reader.pos..][0..8];
+                code_reader.pos += 8;
+                self.stack.pushUnchecked(.{ .f64 = @bitCast(std.mem.readInt(u64, bytes, .little)) });
             },
 
             // ── i32 missing arithmetic ─────────────────────────────────────────────
