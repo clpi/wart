@@ -66,10 +66,11 @@ jobs:
           make -j$(nproc)
           sudo find . -name iwasm -exec cp {} /usr/local/bin/ \; || true
           cd ../wamr-compiler
-          mkdir build && cd build
-          cmake ..
-          make -j$(nproc)
-          sudo find . -name wamrc -exec cp {} /usr/local/bin/ \;
+          # skipping wamr-compiler build because of llvm dependencies missing
+          # mkdir build && cd build
+          # cmake ..
+          # make -j$(nproc)
+          # sudo find . -name wamrc -exec cp {} /usr/local/bin/ \; || true
 
       - name: Build wart
         run: |

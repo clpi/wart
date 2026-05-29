@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Replaced `std.ArrayList.orderedRemove(0)` operations with highly optimized O(1) circular buffers tracking a `head` index in `Channel`, `ThreadPool`, and `WasiConcurrency` message queues, vastly improving queue iteration and channel pop speed.
+- Fixed the compilation bug by replacing `std.heap.GeneralPurposeAllocator` with `std.heap.ArenaAllocator.init` since it was moved in Zig 0.17.
+- Addressed multiple GitHub Action test failures across Ubuntu, macOS, and Windows. Replaced deprecated Node.js 20 actions `actions/upload-artifact@v4` with `@v4.4.3` and `goto-bus-stop/setup-zig@v2.2.0` with `@v2`. Replaced missing `wasm3` package release link with a direct `.elf` binary download.
 
 - Updated codebase to support latest `zig@master` (`>=0.17.0`) standard library changes.
 - Removed `src/wasm/instance.zig` which contained dead code.
