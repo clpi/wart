@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 
 pub fn nanoTimestamp() i64 {
     if (builtin.os.tag == .windows) {
-        return std.time.microTimestamp() * std.time.ns_per_us;
+        return @as(i64, @intCast(std.time.milliTimestamp())) * std.time.ns_per_ms;
     } else {
         var ts: std.c.timespec = undefined;
         _ = std.c.clock_gettime(.REALTIME, &ts);
