@@ -74,3 +74,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated Nix channel to `nixos-unstable` in `.github/workflows/nix.yml` to resolve dependency errors in Nix flake checks.
 - Renamed Homebrew formula from `wx.rb` to `wart.rb` to match the project name.
+
+### Fixed
+- Fixed compilation error in `src/wasm/wasi/concurrency.zig` where `std.ArrayList.init` was incorrectly being called instead of `.empty`.
+- Modified `bench.sh` to not fail early on runtime command failures so the fallback timer handles bad exit codes more gracefully.
+- Removed `AGENTS.md` to keep the repository clean.
+- Updated `.github/workflows/benchmark.yml` and `.github/workflows/ci.yml` to explicitly include `zig-out/bin/wart` in artifact uploads for benchmark results.
+- Fixed Windows CI build failure in `src/util/time.zig` by using `milliTimestamp` for Windows instead of POSIX `clock_gettime`.
+- Fixed Windows CI build failure in `src/wasm/wasi_preview2.zig` by replacing `std.posix.STDIN_FILENO` constants with standard file descriptors (0, 1, 2).
+- Used `std.time.microTimestamp` instead of `milliTimestamp` for better resolution on Windows in `src/util/time.zig`.
