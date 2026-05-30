@@ -33,21 +33,21 @@ pub const WasiPreview2 = struct {
         // Stdin (handle 0)
         try wasi.streams.append(allocator, Stream{
             .kind = .input,
-            .fd = std.posix.STDIN_FILENO,
+            .fd = 0,
         });
         wasi.stdin_handle = 0;
 
         // Stdout (handle 1)
         try wasi.streams.append(allocator, Stream{
             .kind = .output,
-            .fd = std.posix.STDOUT_FILENO,
+            .fd = 1,
         });
         wasi.stdout_handle = 1;
 
         // Stderr (handle 2)
         try wasi.streams.append(allocator, Stream{
             .kind = .output,
-            .fd = std.posix.STDERR_FILENO,
+            .fd = 2,
         });
         wasi.stderr_handle = 2;
 
