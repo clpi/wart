@@ -74,3 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated Nix channel to `nixos-unstable` in `.github/workflows/nix.yml` to resolve dependency errors in Nix flake checks.
 - Renamed Homebrew formula from `wx.rb` to `wart.rb` to match the project name.
+
+### Fixed
+- Fixed compilation error in `src/wasm/wasi/concurrency.zig` where `std.ArrayList.init` was incorrectly being called instead of `.empty`.
+- Modified `bench.sh` to not fail early on runtime command failures so the fallback timer handles bad exit codes more gracefully.
+- Removed `AGENTS.md` to keep the repository clean.
+- Updated `.github/workflows/benchmark.yml` and `.github/workflows/ci.yml` to explicitly include `zig-out/bin/wart` in artifact uploads for benchmark results.

@@ -107,4 +107,5 @@ jobs:
             bench/results/*.json
             bench/results/*.md
             bench/results/*.toml
+            zig-out/bin/wart
           if-no-files-found: warn
