@@ -82,3 +82,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `.github/workflows/benchmark.yml` and `.github/workflows/ci.yml` to explicitly include `zig-out/bin/wart` in artifact uploads for benchmark results.
 - Fixed Windows CI build failure in `src/util/time.zig` by using `milliTimestamp` for Windows instead of POSIX `clock_gettime`.
 - Fixed Windows CI build failure in `src/wasm/wasi_preview2.zig` by replacing `std.posix.STDIN_FILENO` constants with standard file descriptors (0, 1, 2).
+- Used `std.time.microTimestamp` instead of `milliTimestamp` for better resolution on Windows in `src/util/time.zig`.
